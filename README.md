@@ -36,16 +36,54 @@ Claude 和 Codex 不行 —— 它们的渠道指向本机代理，New API 里�
 
 ## 安装
 
+### 方式一：下载打包好的版本
+
+到 [Releases](https://github.com/fatassasin/quota-sidebar/releases) 下载
+`QuotaSidebar-win32-x64.zip`，解压到任意目录，双击里面的 `QuotaSidebar.exe`。
+不需要装 Node.js。
+
+想让它开机自启、或者在开始菜单里有个图标 —— 在**解压出来的那个目录里**打开
+PowerShell（在地址栏敲 `powershell` 回车即可），执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File create-shortcut.ps1 -Startup
+```
+
+去掉 `-Startup` 就只建开始菜单快捷方式，不自启。这个脚本从源码目录里跑也可以，
+它会自己认出是哪种装法。
+
+### 方式二：从源码运行
+
+需要 [Node.js](https://nodejs.org/) 18 以上和 Git。Windows 上在
+PowerShell 或 Git Bash 里依次执行：
+
 ```bash
+git clone https://github.com/fatassasin/quota-sidebar.git
+cd quota-sidebar
 npm install
 npm start
 ```
 
-`better-sqlite3` 是原生模块，需要针对 Electron 的 ABI 重建。装完如果报 ABI 不匹配：
+`better-sqlite3` 是原生模块，得按 Electron 的 ABI 编译，`npm install` 一般会自动做。
+启动时如果报 `NODE_MODULE_VERSION` 不匹配之类的 ABI 错误，手动重建一次：
 
 ```bash
 npx electron-rebuild -f -w better-sqlite3
 ```
+
+平时后台启动（不留控制台窗口）可以用仓库里的 `start.bat`：
+
+```bash
+./start.bat
+```
+
+自己打一份 zip：
+
+```bash
+npm run package
+```
+
+产物在 `dist/QuotaSidebar-win32-x64/`。
 
 ## 配置
 
@@ -57,6 +95,11 @@ npx electron-rebuild -f -w better-sqlite3
 - **Codex — codex2api 数据库**（可选）—— codex2api 目录下的 `codex2api.db`
 
 填完立刻会刷新一次。没填的源会在自己的卡片上直接写明缺哪一项。
+
+> **不知道自己的路径在哪、或者你的部署方式跟这里对不上？**
+> 把这个仓库丢给 Claude Code / Cursor 之类的 AI，让它读一遍 `sources.js`，
+> 照着你的实际情况改查询或者帮你找出这几个 `.db` 文件的位置。
+> 那个文件里每个源怎么取数都有中文注释，AI 照着改比你自己猜要快。
 
 自检可以用：
 

@@ -5,9 +5,18 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "check": "electron --no-sandbox check.js"
+    "check": "electron --no-sandbox check.js",
+    "package": "node build.js"
   },
-  "keywords": ["electron", "claude", "codex", "cline", "opencode", "quota", "new-api"],
+  "keywords": [
+    "electron",
+    "claude",
+    "codex",
+    "cline",
+    "opencode",
+    "quota",
+    "new-api"
+  ],
   "author": "",
   "license": "MIT",
   "type": "commonjs",
@@ -15,6 +24,7 @@
     "better-sqlite3": "^12.11.1"
   },
   "devDependencies": {
+    "@electron/packager": "^18.4.4",
     "@electron/rebuild": "^3.7.2",
     "electron": "^41.7.1"
   }
