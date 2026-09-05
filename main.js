@@ -157,7 +157,10 @@ const DEFAULTS = {
   panelAuto: true,
   panelAutoHeight: null,
   autoShowAfterReset: true,
-  onlyWhenRunning: true,
+  // 默认关。开着的话新装的人打开程序、没同时开 claude/codex，就什么都看不见 ——
+  // 分不清是没装好还是没配好，第一次用就先卡在这儿。想要这个行为的人自己去
+  // 设置里打开（「仅在这些程序处于前台时显示」），下面那张进程名单已经填好备着了。
+  onlyWhenRunning: false,
   processes: ['claude', 'codex'],
   hiddenUntil: {},
   claudeUsageSnapshots: {},

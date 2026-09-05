@@ -513,7 +513,7 @@
   const color = (p) => (p >= 90 ? 'var(--bad)' : p >= 70 ? 'var(--warn)' : 'var(--ok)')
 
   let last = null
-  let config = { intervalSec: 60, hideEmail: true, visible: {}, names: {}, bookmark: {}, autoShowAfterReset: true, hiddenUntil: {}, onlyWhenRunning: true, processes: [], schedules: [], sources: {} }
+  let config = { intervalSec: 60, hideEmail: true, visible: {}, names: {}, bookmark: {}, autoShowAfterReset: true, hiddenUntil: {}, onlyWhenRunning: false, processes: [], schedules: [], sources: {} }
   let displays = []
   let runningProcs = []
   let drawerReady = false
@@ -1017,7 +1017,9 @@
     $('#tabRounded').value = config.bookmark?.rounded ?? 8
     $('#panelHeight').value = config.panelHeight ?? 560
     setToggle('#panelAuto', !!config.panelAuto)
-    setToggle('#onlyWhenRunning', config.onlyWhenRunning !== false)
+    // 这里不能写 !== false —— 那样键缺失时会显示成「开」，跟主进程 DEFAULTS 里的
+    // 默认关正好相反，开关看着是开的、书签却一直在，人会以为坏了。
+    setToggle('#onlyWhenRunning', !!config.onlyWhenRunning)
     // 数据源路径。syncUI 每轮询一次就跑一遍（onData 里），而路径又长又是手打的 ——
     // 正在输入的那个框不能覆盖，否则打到一半会被整段刷掉。
     setPath('#srcNewapi', config.sources?.newapi)
