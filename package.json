@@ -1,0 +1,21 @@
+{
+  "name": "quota-sidebar",
+  "version": "1.0.0",
+  "description": "贴在屏幕边缘的额度面板：在一处盯住 Claude / Codex / Cline / Opencode 的订阅用量",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "electron --no-sandbox check.js"
+  },
+  "keywords": ["electron", "claude", "codex", "cline", "opencode", "quota", "new-api"],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
+    "electron": "^41.7.1"
+  }
+}

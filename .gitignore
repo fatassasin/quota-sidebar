@@ -1,0 +1,19 @@
+# 依赖与构建产物
+node_modules/
+dist/
+out/
+build/
+
+# 本机运行时残留（不该跟着仓库走）
+run.log
+shot.png
+probe5.js
+*.tmp
+config.json
+config.bad.json
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

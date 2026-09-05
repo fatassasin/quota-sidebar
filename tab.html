@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>tab</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: transparent; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    cursor: grab; -webkit-app-region: no-drag;
+    user-select: none; -webkit-user-select: none;
+  }
+  body:active { cursor: grabbing; }
+
+  #tab {
+    width: 100%; height: 100%;
+    background: rgba(30, 30, 36, .92);
+    border: 1px solid rgba(255, 255, 255, .12);
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(16px);
+    transition: background .2s, transform .2s;
+  }
+  #tab:hover { background: rgba(42, 42, 50, .96); }
+  #tab:active { transform: scale(.96); }
+
+  /* 箭头指向面板展开方向 */
+  .arrow { width: 0; height: 0; border-style: solid; transition: transform .2s; }
+
+  /* right edge: 面板从右往左展开 → 箭头朝左 */
+  body.edge-right .arrow {
+    border-width: 5px 8px 5px 0;
+    border-color: transparent #e8e8ec transparent transparent;
+  }
+
+  /* left edge: 面板从左往右展开 → 箭头朝右 */
+  body.edge-left .arrow {
+    border-width: 5px 0 5px 8px;
+    border-color: transparent transparent transparent #e8e8ec;
+  }
+
+  /* top edge: 面板从上往下展开 → 箭头朝下 */
+  body.edge-top .arrow {
+    border-width: 8px 5px 0 5px;
+    border-color: #e8e8ec transparent transparent transparent;
+  }
+  body.edge-top.open .arrow { transform: rotate(180deg); }
+
+  /* bottom edge: 面板从下往上展开 → 箭头朝上 */
+  body.edge-bottom .arrow {
+    border-width: 0 5px 8px 5px;
+    border-color: transparent transparent #e8e8ec transparent;
+  }
+  body.edge-bottom.open .arrow { transform: rotate(180deg); }
+</style>
+
+<div id="tab"><div class="arrow"></div></div>
+
+<script>
+  const tab = document.getElementById('tab')
+  let dragging = false
+  let dragStart = null
+
+  function applyCfg(bm) {
+    document.body.className = `edge-${bm.edge || 'right'}`
+    if (bm.hidden) document.body.classList.add('hidden')
+    else document.body.classList.remove('hidden')
+    // 圆角
+    const r = Math.max(0, Math.min(24, bm.rounded ?? 8))
+    tab.style.borderRadius = r + 'px'
+    // 尺寸由主进程 setBounds 控制，这里只同步圆角
+  }
+
+  api.onBookmarkConfig(applyCfg)
+  api.onExpanded((open) => document.body.classList.toggle('open', open))
+  api.configGet().then((c) => applyCfg(c.bookmark || {}))
+
+  tab.addEventListener('mouseenter', () => api.tabHover(true))
+  tab.addEventListener('mouseleave', () => api.tabHover(false))
+
+  tab.addEventListener('pointerdown', (e) => {
+    dragging = true
+    dragStart = { x: e.screenX, y: e.screenY }
+    tab.setPointerCapture(e.pointerId)
+    api.tabDragStart(dragStart)
+    e.preventDefault()
+  })
+
+  tab.addEventListener('pointermove', (e) => {
+    if (!dragging) return
+    api.tabDragMove({ x: e.screenX, y: e.screenY })
+  })
+
+  function finishDrag(e) {
+    if (!dragging) return
+    dragging = false
+    if (tab.hasPointerCapture(e.pointerId)) tab.releasePointerCapture(e.pointerId)
+    api.tabDragEnd()
+  }
+
+  tab.addEventListener('pointerup', finishDrag)
+  tab.addEventListener('pointercancel', finishDrag)
+</script>

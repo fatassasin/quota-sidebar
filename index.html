@@ -1,0 +1,1355 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>额度侧板</title>
+<style>
+  :root {
+    --bg: rgba(18, 18, 22, .82);
+    --card: rgba(255, 255, 255, .045);
+    --line: rgba(255, 255, 255, .09);
+    --fg: #e8e8ec;
+    --dim: #8b8b96;
+    --ok: #3ecf8e;
+    --warn: #f5b544;
+    --bad: #f2555a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: transparent; }
+  body {
+    font: 13px/1.45 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--fg); -webkit-font-smoothing: antialiased;
+    display: flex; justify-content: flex-end;
+  }
+
+  #panel {
+    position: relative;
+    width: 354px; flex: none; height: 100%; position: relative;
+    background: var(--bg); backdrop-filter: blur(22px) saturate(160%);
+    border-left: 1px solid var(--line);
+    border-radius: 14px 0 0 14px;
+    display: flex; flex-direction: column;
+    opacity: 0; transform: translateX(12px);
+    transition: opacity .22s ease, transform .28s cubic-bezier(.2, .9, .25, 1);
+    overflow: hidden;
+  }
+  body.open #panel { opacity: 1; transform: none; }
+
+  header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 14px 16px 11px; border-bottom: 1px solid var(--line);
+    -webkit-app-region: drag;
+  }
+  header h1 { font-size: 13px; font-weight: 600; letter-spacing: .3px; }
+  header .t { margin-left: auto; color: var(--dim); font-size: 11px; -webkit-app-region: no-drag; }
+  header button {
+    -webkit-app-region: no-drag;
+    background: none; border: 0; color: var(--dim); cursor: pointer;
+    font-size: 13px; padding: 2px 4px; border-radius: 4px;
+  }
+  header button:hover { color: var(--fg); background: var(--card); }
+
+  #list { flex: 1; overflow-y: auto; padding: 10px 14px 18px; }
+  /* 细滚轮，避免 Chromium 默认白色滚轮。轨道透明，只留滑块浮在毛玻璃上。
+     border 跟轨道同色时是隐形的内缩间距，轨道透明后必须一起透明，否则显出一圈黑边。 */
+  #list::-webkit-scrollbar, #drawer::-webkit-scrollbar { width: 7px; }
+  #list::-webkit-scrollbar-track, #drawer::-webkit-scrollbar-track { background: transparent; }
+  #list::-webkit-scrollbar-thumb, #drawer::-webkit-scrollbar-thumb {
+    background: rgba(52, 52, 60, .92); border: 1px solid transparent; background-clip: padding-box;
+    border-radius: 8px;
+  }
+  #list::-webkit-scrollbar-thumb:hover, #drawer::-webkit-scrollbar-thumb:hover { background: rgba(72, 72, 82, .96); background-clip: padding-box; }
+  #list::-webkit-scrollbar-corner, #drawer::-webkit-scrollbar-corner { background: transparent; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 13px; margin-bottom: 9px;
+  }
+  .card.off { opacity: .45; }
+  .head { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; }
+  .name {
+    font-weight: 600; font-size: 12.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .badge {
+    flex: none; font-size: 10px; padding: 1px 6px; border-radius: 20px;
+    background: rgba(255, 255, 255, .08); color: var(--dim); letter-spacing: .3px;
+  }
+  /* NewAPI 优先级名次。第一名才会真的收到流量（选路是赢者通吃），所以只有它高亮。 */
+  .rank {
+    flex: none; width: 15px; height: 15px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+    background: rgba(255, 255, 255, .08); color: var(--dim);
+  }
+  .rank.top { background: rgba(62, 207, 142, .18); color: var(--ok); }
+  .extra { margin-left: auto; flex: none; font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .icons { display: flex; align-items: center; gap: 4px; margin-left: auto; flex: none; }
+  .icon-btn {
+    background: none; border: 0; color: var(--dim); cursor: pointer;
+    font-size: 13px; padding: 1px 3px; border-radius: 4px; line-height: 1;
+  }
+  .icon-btn:hover { color: var(--fg); background: var(--card); }
+  .icon-btn.on { color: var(--bad); }
+  .icon-btn[disabled] { opacity: .3; cursor: default; }
+
+  .row { margin-top: 9px; }
+  .rowtop { display: flex; font-size: 11px; color: var(--dim); margin-bottom: 4px; }
+  .rowtop b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .rowtop .r { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .07); overflow: hidden; }
+  .bar i {
+    display: block; height: 100%; border-radius: 3px;
+    transition: width .6s cubic-bezier(.34, 1.56, .64, 1);
+  }
+
+  .msg { font-size: 11px; margin-top: 8px; padding: 5px 8px; border-radius: 6px; }
+  .msg.err { color: var(--bad); background: rgba(242, 85, 90, .1); }
+  .msg.warn { color: var(--warn); background: rgba(245, 181, 68, .1); }
+  .empty { color: var(--dim); text-align: center; padding: 30px 0; font-size: 12px; }
+
+  /* 设置只是额度外框内的内容层：圆角和毛玻璃由唯一的 #panel 提供 */
+  #drawer {
+    position: absolute; inset: 0; z-index: 10;
+    background: var(--bg);
+    display: none; flex-direction: column; overflow: hidden;
+  }
+  #drawer.open { display: flex; }
+  /* 设置打开时底下的额度内容必须完全消失，不能透过半透明背景叠出来 */
+  #panel:has(#drawer.open) > header,
+  #panel:has(#drawer.open) > #list { visibility: hidden; }
+  #drawer header { flex: none; }
+  #drawer h2 { font-size: 13px; font-weight: 600; letter-spacing: .3px; }
+  #drawer header .close { margin-left: auto; }
+  #drawerBody { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 14px 18px; }
+  #drawerBody::-webkit-scrollbar { width: 7px; }
+  #drawerBody::-webkit-scrollbar-track { background: transparent; }
+  #drawerBody::-webkit-scrollbar-thumb {
+    background: rgba(52, 52, 60, .92); border: 1px solid transparent; background-clip: padding-box;
+    border-radius: 8px;
+  }
+  #drawerBody::-webkit-scrollbar-thumb:hover { background: rgba(72, 72, 82, .96); background-clip: padding-box; }
+  .settings-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 13px; margin-bottom: 9px;
+  }
+  .settings-card .section-title { margin: 0 0 8px; }
+  .settings-card .field:last-child, .settings-card .toggle-row:last-child { margin-bottom: 0; }
+  .selected-label { font-size: 10.5px; color: var(--dim); margin: 2px 0 6px; }
+
+  /* 刷新按钮旋转 */
+  #r.spin { animation: spin .8s ease; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 11px; color: var(--dim); margin-bottom: 5px; }
+  .field input[type=text], .field input[type=number] {
+    width: 100%; background: var(--card); border: 1px solid var(--line);
+    border-radius: 6px; color: var(--fg); padding: 7px 9px; font-size: 12.5px; outline: none;
+  }
+  .field input[type=text]:focus, .field input[type=number]:focus { border-color: rgba(74, 158, 255, .5); }
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0; font-size: 12.5px;
+  }
+  .toggle {
+    position: relative; width: 36px; height: 20px; flex: none;
+    background: rgba(255,255,255,.12); border-radius: 20px; cursor: pointer;
+    transition: background .2s;
+  }
+  .toggle.on { background: var(--ok); }
+  .toggle::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: transform .2s;
+  }
+  .toggle.on::after { transform: translateX(16px); }
+
+  .group { margin-top: 4px; }
+  .group .label { font-size: 11px; color: var(--dim); margin-bottom: 6px; }
+  .group .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .group .account-field { flex: 1; min-width: 0; position: relative; }
+  .group .limit-left {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%); z-index: 1;
+    color: var(--bad); font-size: 10.5px; line-height: 1; font-variant-numeric: tabular-nums;
+    white-space: nowrap; pointer-events: none;
+  }
+  .group .limit-left.soon { color: var(--warn); }
+  .group .row input[type=text] {
+    width: 100%; background: var(--card); border: 1px solid var(--line);
+    border-radius: 6px; color: var(--fg); padding: 7px 58px 7px 9px; font-size: 12.5px; outline: none;
+  }
+  .group .row input[type=text]:focus { border-color: rgba(74, 158, 255, .5); }
+  .group .row .toggle { margin-left: auto; }
+  .group .name-hint { flex: none; font-size: 10.5px; color: var(--dim); width: 52px; }
+  .group .drag {
+    flex: none; cursor: grab; color: var(--dim); font-size: 13px;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .group .drag:active { cursor: grabbing; }
+  #panels .row.over { outline: 1px dashed rgba(74,158,255,.6); border-radius: 6px; }
+
+  /* 拖动排序：全程只动 transform。blur 的 backdrop 每帧重新合成太贵，拖动时先摘掉，
+     --bg 本身有 .82 不透明度，视觉上几乎看不出来。 */
+  body.dragging { cursor: grabbing; }
+  body.dragging #panel { backdrop-filter: none; }
+  #panels.dragging .row { transition: transform .16s cubic-bezier(.2, 0, 0, 1); }
+  #panels .row.lift {
+    position: relative; z-index: 2; transition: none !important;
+    background: rgba(74, 158, 255, .10); border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+  }
+
+  /* 进程白名单 */
+  .chips {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;
+    /* ponytail: scroll 而不是 auto —— 只有两个 chip 时 auto 不渲染轨道，看着像没做 */
+    max-height: 96px; overflow-y: scroll; padding-right: 3px;
+  }
+  .chips::-webkit-scrollbar { width: 6px; }
+  .chips::-webkit-scrollbar-track { background: transparent; border-radius: 6px; }
+  .chips::-webkit-scrollbar-thumb { background: rgba(52, 52, 60, .92); border-radius: 6px; }
+  .chips::-webkit-scrollbar-thumb:hover { background: rgba(72, 72, 82, .96); }
+  .chip {
+    display: flex; align-items: center; gap: 5px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 12px; padding: 3px 6px 3px 9px;
+    font-size: 11.5px; color: var(--fg);
+  }
+  .chip.live { border-color: rgba(74, 222, 128, .45); }
+  .chip b { font-weight: 500; }
+  .chip .x { cursor: pointer; color: var(--dim); font-size: 13px; line-height: 1; padding: 0 2px; }
+  .chip .x:hover { color: var(--bad); }
+  .chips-empty { font-size: 11px; color: var(--bad); margin-bottom: 8px; }
+  .addproc { display: flex; gap: 6px; position: relative; }
+  .addproc input {
+    flex: 1; min-width: 0; color: var(--fg); outline: none;
+    background: rgba(8, 8, 12, .68); backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, .10); border-radius: 8px;
+    padding: 8px 10px; font: inherit; font-size: 12.5px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 4px 14px rgba(0,0,0,.16);
+  }
+  .addproc input::placeholder { color: #666672; }
+  .addproc input:focus { border-color: rgba(74, 158, 255, .45); background: rgba(10, 10, 15, .82); }
+  .addproc button {
+    flex: none; background: rgba(8, 8, 12, .68); backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, .10); border-radius: 8px;
+    color: var(--fg); padding: 0 12px; font-size: 12.5px; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,0,0,.16);
+  }
+  .addproc button:hover { border-color: rgba(74, 158, 255, .5); }
+
+  /* ponytail: 自建下拉替掉 <datalist>——原生弹层由 Chromium 画在页面之外，CSS 碰不到，
+     滚动条永远是系统那根白的。这里是普通 div，样式跟面板一致。 */
+  .proclist {
+    display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 52px;
+    z-index: 20; max-height: 176px; overflow-y: scroll;
+    background: rgba(10, 10, 15, .96); backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, .10); border-radius: 8px; padding: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  }
+  .proclist.open { display: block; }
+  .proclist::-webkit-scrollbar { width: 7px; }
+  .proclist::-webkit-scrollbar-track { background: transparent; border-radius: 7px; }
+  .proclist::-webkit-scrollbar-thumb { background: rgba(52, 52, 60, .92); border-radius: 7px; }
+  .proclist::-webkit-scrollbar-thumb:hover { background: rgba(72, 72, 82, .96); }
+  .proclist div {
+    padding: 6px 8px; border-radius: 5px; font-size: 12.5px; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .proclist div:hover, .proclist div.sel { background: rgba(74, 158, 255, .22); }
+  .proclist .none { color: var(--dim); cursor: default; }
+  .proclist .none:hover { background: none; }
+
+  .section-title {
+    font-size: 10.5px; color: var(--dim); letter-spacing: .4px;
+    margin: 14px 0 6px; text-transform: uppercase;
+  }
+
+  /* 定时热身任务 */
+  .sched-hint { font-size: 10.5px; color: var(--dim); line-height: 1.5; margin-bottom: 9px; }
+  .sched {
+    border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .02);
+    padding: 9px 10px; margin-bottom: 8px;
+  }
+  .sched.off { opacity: .5; }
+  .sched input[type=text] {
+    background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+    color: var(--fg); padding: 5px 8px; font: inherit; font-size: 12px;
+    outline: none; min-width: 0;
+  }
+  .sched input:focus { border-color: rgba(74, 158, 255, .5); }
+  /* 折叠头：收起时只留名字、时间和开关，任务多了也不会把设置页撑长 */
+  .sched-head { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+  .sched-head .caret {
+    flex: none; display: inline-block; width: 9px; font-size: 9px; color: var(--dim);
+    transition: transform .15s; /* inline 元素吃不到 transform，必须 inline-block */
+  }
+  .sched.open .sched-head .caret { transform: rotate(90deg); }
+  .sched-head .sched-title {
+    flex: 1; min-width: 0; font-weight: 600; font-size: 12.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sched-head .sched-when {
+    flex: none; font-size: 10.5px; color: var(--dim); font-variant-numeric: tabular-nums;
+  }
+  .sched-body { display: none; margin-top: 8px; }
+  .sched.open .sched-body { display: block; }
+  .sched-body .sched-name { width: 100%; margin-bottom: 7px; }
+  .sched-line { display: flex; gap: 7px; margin-bottom: 8px; }
+  .sched-line .sched-msg { flex: 1; }
+  /* ponytail: 自建下拉，理由跟上面的 .proclist 一样——原生 <select> 的弹层
+     Chromium 画在页面之外，CSS 够不着，圆角和滚动条都只能是系统那套。
+     .dd 是通用件：定时热身的时/分和「显示到屏幕」共用。 */
+  .timesel { flex: none; display: flex; align-items: center; gap: 3px; }
+  .timesel .colon { color: var(--dim); }
+  .dd {
+    position: relative; display: flex; align-items: center; gap: 4px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+    color: var(--fg); padding: 5px 6px; font-size: 12px; cursor: pointer;
+    font-variant-numeric: tabular-nums; user-select: none; -webkit-user-select: none;
+  }
+  .dd:hover, .dd.open { border-color: rgba(74, 158, 255, .5); }
+  .dd .dd-car { color: var(--dim); font-size: 9px; }
+  /* 整行的下拉：占满宽度，值靠左省略，箭头顶右 */
+  .dd.wide { width: 100%; padding: 7px 9px; font-size: 12.5px; }
+  .dd.wide .dd-val { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dd-menu {
+    display: none; position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%;
+    z-index: 30; max-height: 176px; overflow-y: scroll;
+    background: rgba(52, 52, 60, .96); backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid rgba(4, 4, 6, .72); border-radius: 8px; padding: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  }
+  .dd.open .dd-menu { display: block; }
+  /* 定时热身是抽屉最后一张卡，往下开多半被裁掉，空间不够就翻上去 */
+  .dd.up .dd-menu { top: auto; bottom: calc(100% + 4px); }
+  .dd-menu::-webkit-scrollbar { width: 7px; }
+  .dd-menu::-webkit-scrollbar-track { background: transparent; border-radius: 7px; }
+  .dd-menu::-webkit-scrollbar-thumb { background: rgba(96, 96, 108, .95); border-radius: 7px; }
+  .dd-menu::-webkit-scrollbar-thumb:hover { background: rgba(122, 122, 134, .98); }
+  .dd-opt { padding: 5px 10px; border-radius: 5px; font-size: 12.5px; text-align: center; }
+  .dd-opt:hover { background: rgba(255, 255, 255, .10); }
+  .dd-opt.on { background: rgba(74, 158, 255, .32); }
+  .dd.wide .dd-opt { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .days { display: flex; gap: 4px; margin-bottom: 8px; }
+  .days .d {
+    flex: 1; text-align: center; font-size: 11px; padding: 3px 0; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 5px; color: var(--dim);
+    user-select: none; -webkit-user-select: none;
+  }
+  .days .d.on { background: rgba(74, 158, 255, .22); border-color: rgba(74, 158, 255, .45); color: var(--fg); }
+  .tgt-label { font-size: 10.5px; color: var(--dim); margin-bottom: 4px; }
+  .tgts { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+  .tgt {
+    display: flex; align-items: center; gap: 7px; font-size: 11.5px;
+    padding: 3px 5px; border-radius: 5px; cursor: pointer;
+    user-select: none; -webkit-user-select: none;
+  }
+  .tgt:hover { background: rgba(255, 255, 255, .045); }
+  .tgt .box {
+    flex: none; width: 13px; height: 13px; border-radius: 3px;
+    border: 1px solid var(--line); position: relative;
+  }
+  .tgt.on .box { background: var(--ok); border-color: var(--ok); }
+  .tgt.on .box::after {
+    content: '✓'; position: absolute; inset: 0; text-align: center;
+    color: #10221a; font-size: 10px; line-height: 13px; font-weight: 700;
+  }
+  .tgt .tname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tgt.na, .tgt.na:hover { cursor: default; opacity: .4; background: none; }
+  .tgt .na-tag { margin-left: auto; flex: none; font-size: 10px; color: var(--dim); }
+  .sched-last {
+    font-size: 10.5px; line-height: 1.4; margin-top: 7px; color: var(--dim);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sched-last:empty { display: none; }
+  .sched-last.good { color: var(--ok); }
+  .sched-last.bad { color: var(--bad); }
+  .sched-foot { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+  .sched-next {
+    flex: 1; min-width: 0; font-size: 10.5px; color: var(--dim);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sched-foot button {
+    flex: none; background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+    color: var(--fg); font: inherit; font-size: 11px; padding: 3px 8px; cursor: pointer;
+  }
+  .sched-foot button:hover { border-color: rgba(74, 158, 255, .5); }
+  .sched-foot .sched-del:hover { border-color: var(--bad); color: var(--bad); }
+  .sched-foot button[disabled] { opacity: .45; cursor: default; }
+  .add-btn {
+    width: 100%; background: var(--card); border: 1px dashed var(--line); border-radius: 8px;
+    color: var(--dim); font: inherit; font-size: 12px; padding: 7px; cursor: pointer;
+  }
+  .add-btn:hover { color: var(--fg); border-color: rgba(74, 158, 255, .5); }
+  .sched-empty { font-size: 11px; color: var(--dim); text-align: center; padding: 4px 0 10px; }
+</style>
+
+<div id="panel">
+  <header>
+    <h1>额度</h1>
+    <span class="t" id="t">载入中</span>
+    <button id="r" title="刷新">↻</button>
+    <button id="gear" title="设置">⚙</button>
+    <button id="closePanel" title="收起">✕</button>
+  </header>
+  <div id="list"><div class="empty">读取中…</div></div>
+
+<div id="drawer">
+  <header>
+    <h2>设置</h2>
+    <button class="close" id="close">✕</button>
+  </header>
+  <div id="drawerBody">
+    <section class="settings-card">
+      <div class="section-title">通用</div>
+      <div class="field">
+        <label>同步间隔（秒）</label>
+        <input type="number" id="interval" min="10" max="3600" />
+      </div>
+      <div class="toggle-row">
+        <span>隐藏邮箱地址</span>
+        <div class="toggle" id="hideEmail"></div>
+      </div>
+      <div class="toggle-row">
+        <span>额度重置后自动显示</span>
+        <div class="toggle" id="autoShowAfterReset"></div>
+      </div>
+      <div class="toggle-row">
+        <span>隐藏书签块</span>
+        <div class="toggle" id="hideBookmark"></div>
+      </div>
+      <div class="toggle-row" title="按配速给 NewAPI 渠道排优先级：周额度按 100%/7 天匀速算出此刻「本该」用到多少，谁落后这条基准线最多就先用谁 —— 落后的号有富余，超速的号该缓一缓，这样三个号才能一直都活着，而不是集中喂死一个。配速每 10 个点分一档（正好等于一个 5 小时窗口的量），同档之间按周额度的重置先后排，所以领先的号至少服务满一个 5 小时窗口才交班，不会来回抖。5 小时窗口本身只用来判断现在还供不供得动，不参与排序。">
+        <span>自动排 NewAPI 渠道优先级</span>
+        <div class="toggle" id="newapiPriority"></div>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <div class="section-title">仅在这些程序处于前台时显示</div>
+      <div class="toggle-row">
+        <span>启用</span>
+        <div class="toggle" id="onlyWhenRunning"></div>
+      </div>
+      <div class="selected-label">已选择</div>
+      <div class="chips" id="procChips"></div>
+      <div class="addproc">
+        <input type="text" id="procInput" autocomplete="off" placeholder="进程名，如 claude" />
+        <div class="proclist" id="procList"></div>
+        <button id="procAdd">添加</button>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <div class="section-title">显示到屏幕</div>
+      <div class="field">
+        <div id="displayPick"></div>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <div class="section-title">书签块</div>
+      <div class="field">
+        <label>宽度（像素）</label>
+        <input type="number" id="tabSize" min="1" />
+      </div>
+      <div class="field">
+        <label>高度（像素）</label>
+        <input type="number" id="tabSizeH" min="1" />
+      </div>
+      <div class="field">
+        <label>圆角（像素）</label>
+        <input type="number" id="tabRounded" min="0" max="24" />
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <div class="section-title">面板展开高度</div>
+      <div class="field">
+        <input type="number" id="panelHeight" min="200" max="1000" />
+      </div>
+      <div class="toggle-row">
+        <span>高度自适应渠道内容</span>
+        <div class="toggle" id="panelAuto"></div>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <div class="section-title">面板显示 &amp; 自定义名称</div>
+      <div class="group" id="panels"></div>
+    </section>
+
+    <section class="settings-card">
+      <div class="section-title">定时热身</div>
+      <div class="sched-hint">
+        到点发一条消息，提前点着 5 小时窗口。只在额度未动、倒计时没起来时发，否则跳过后重试。
+      </div>
+      <div id="schedList"></div>
+      <button class="add-btn" id="schedAdd">＋ 添加任务</button>
+    </section>
+
+    <section class="settings-card">
+      <div class="section-title">配置渠道</div>
+      <div class="sched-hint">
+        填上 New API 的数据库位置就能用起来，Claude 和 Codex 走的是本机代理、要各自再填一处。
+      </div>
+      <div class="field">
+        <label>New API 数据库（必填）</label>
+        <input type="text" id="srcNewapi" spellcheck="false" placeholder="例：D:\newAPI\one-api.db" />
+      </div>
+      <div class="field">
+        <label>Claude — gproxy 数据库</label>
+        <input type="text" id="srcGproxy" spellcheck="false" placeholder="例：D:\gproxy\data\gproxy.db" />
+      </div>
+      <div class="field">
+        <label>Codex — codex2api 数据库</label>
+        <input type="text" id="srcCodex" spellcheck="false" placeholder="例：D:\Codex2api\codex2api.db" />
+      </div>
+    </section>
+  </div>
+</div>
+</div>
+
+<script>
+  const $ = (s) => document.querySelector(s)
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+  const color = (p) => (p >= 90 ? 'var(--bad)' : p >= 70 ? 'var(--warn)' : 'var(--ok)')
+
+  let last = null
+  let config = { intervalSec: 60, hideEmail: true, visible: {}, names: {}, bookmark: {}, autoShowAfterReset: true, hiddenUntil: {}, onlyWhenRunning: true, processes: [], schedules: [], sources: {} }
+  let displays = []
+  let runningProcs = []
+  let drawerReady = false
+
+  const PANELS = [
+    { key: 'claude', label: 'Claude', renamable: true },
+    { key: 'codex', label: 'Codex', renamable: true },
+    { key: 'cline', label: 'Cline', renamable: true },
+    { key: 'opencode', label: 'Opencode', renamable: true },
+  ]
+
+  // --- config ---------------------------------------------------------
+  async function loadConfig() {
+    if (!window.api?.configGet) return
+    const [c, d] = await Promise.all([api.configGet(), api.dataGet?.()])
+    config = { ...config, ...c }
+    if (d) last = d
+    restoreResetAccounts(); syncUI(); render(); loadDisplays()
+  }
+
+  function saveConfig(patch, { sync = true } = {}) {
+    config = { ...config, ...patch }
+    if (window.api?.configSet) api.configSet(config)
+    if (sync) syncUI()
+    render()
+  }
+
+  // 设置抽屉第一次打开时才挂各 input 的 change 事件，避免初始 syncUI 连带触发
+  function setupDrawerEvents() {
+    if (drawerReady) return
+    drawerReady = true
+    $('#close').onclick = () => {
+      $('#drawer').classList.remove('open')
+      if (window.api?.setDrawerOpen) api.setDrawerOpen(false)
+      render() // 关掉设置立刻重测卡片高度，自适应才有新数据可用
+    }
+    $('#hideEmail').onclick = () => saveConfig({ hideEmail: !config.hideEmail })
+    $('#autoShowAfterReset').onclick = () => saveConfig({ autoShowAfterReset: !config.autoShowAfterReset })
+    // 默认开，所以取反要拿 !== false 当基准，不然第一次点会把 undefined 翻成 true（等于没反应）。
+    $('#newapiPriority').onclick = () => saveConfig({ newapiPriority: config.newapiPriority === false })
+    $('#hideBookmark').onclick = () => {
+      const hidden = !config.bookmark?.hidden
+      saveConfig({ bookmark: { ...config.bookmark, hidden } })
+      if (window.api?.bookmarkToggleHidden) api.bookmarkToggleHidden(hidden)
+    }
+    $('#interval').addEventListener('change', () => {
+      saveConfig({ intervalSec: Math.max(10, parseInt($('#interval').value, 10) || 60) })
+    })
+    $('#tabSize').addEventListener('change', () => {
+      const size = Math.max(1, parseInt($('#tabSize').value, 10) || 72)
+      saveConfig({ bookmark: { ...config.bookmark, size } })
+      if (window.api?.bookmarkSetStyle) api.bookmarkSetStyle({ size })
+    })
+    $('#tabSizeH').addEventListener('change', () => {
+      const h = Math.max(1, parseInt($('#tabSizeH').value, 10) || 72)
+      saveConfig({ bookmark: { ...config.bookmark, height: h } })
+      if (window.api?.bookmarkSetStyle) api.bookmarkSetStyle({ height: h })
+    })
+    $('#tabRounded').addEventListener('change', () => {
+      const rounded = Math.max(0, Math.min(24, parseInt($('#tabRounded').value, 10) || 8))
+      saveConfig({ bookmark: { ...config.bookmark, rounded } })
+      if (window.api?.bookmarkSetStyle) api.bookmarkSetStyle({ rounded })
+    })
+    $('#panelHeight').addEventListener('change', () => {
+      saveConfig({ panelHeight: Math.max(200, Math.min(1000, parseInt($('#panelHeight').value, 10) || 560)) })
+    })
+    $('#panelAuto').onclick = () => {
+      saveConfig({ panelAuto: !config.panelAuto })
+    }
+    $('#onlyWhenRunning').onclick = () => saveConfig({ onlyWhenRunning: !config.onlyWhenRunning })
+    // 数据源路径。三个框共用一个写法：改完存盘，主进程比出内容变了就重新连库并立刻刷一次。
+    // 用 change 不用 input —— 路径是一个字一个字敲出来的，中途每一帧都去开库只会刷屏报错。
+    for (const [sel, key] of [['#srcNewapi', 'newapi'], ['#srcGproxy', 'gproxy'], ['#srcCodex', 'codex']]) {
+      $(sel).addEventListener('change', () => {
+        saveConfig({ sources: { ...config.sources, [key]: $(sel).value.trim() } })
+      })
+    }
+    $('#schedAdd').onclick = () => {
+      saveConfig({ schedules: [...(config.schedules || []), newSched()] }, { sync: false })
+      renderSchedules(true)
+    }
+    renderSchedules(true)
+    $('#procAdd').onclick = addProc
+    const inp = $('#procInput')
+    inp.addEventListener('input', () => { procSel = -1; renderProcList() })
+    inp.addEventListener('focus', () => { procSel = -1; renderProcList() })
+    inp.addEventListener('blur', () => setTimeout(closeProcList, 150)) // 等 click 先跑
+    inp.addEventListener('keydown', onProcKey)
+    loadProcs()
+  }
+
+  // --- 进程白名单 ------------------------------------------------------
+  const normProc = (s) => String(s || '').trim().toLowerCase().replace(/\.exe$/, '')
+  let procSel = -1
+
+  async function loadProcs() {
+    if (!window.api?.procsList) return
+    runningProcs = await api.procsList()
+    renderProcChips()
+  }
+
+  // 已加入的不再列出，剩下的按输入过滤
+  function procMatches() {
+    const q = normProc($('#procInput')?.value)
+    const has = config.processes || []
+    return runningProcs.filter((p) => !has.includes(p) && (!q || p.includes(q)))
+  }
+
+  function renderProcList() {
+    const box = $('#procList')
+    if (!box) return
+    const m = procMatches()
+    box.innerHTML = m.length
+      ? m.map((p, i) => `<div data-p="${esc(p)}" class="${i === procSel ? 'sel' : ''}">${esc(p)}</div>`).join('')
+      : '<div class="none">无匹配进程</div>'
+    for (const el of box.querySelectorAll('[data-p]')) {
+      el.onmousedown = (e) => { e.preventDefault(); $('#procInput').value = el.dataset.p; addProc() }
+    }
+    box.classList.add('open')
+  }
+
+  function closeProcList() { $('#procList')?.classList.remove('open'); procSel = -1 }
+
+  function onProcKey(e) {
+    const m = procMatches()
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!m.length) return
+      const step = e.key === 'ArrowDown' ? 1 : -1
+      procSel = procSel < 0 ? (step > 0 ? 0 : m.length - 1) : (procSel + step + m.length) % m.length
+      renderProcList()
+      $('#procList').querySelector('.sel')?.scrollIntoView({ block: 'nearest' })
+      return
+    }
+    if (e.key === 'Escape') return closeProcList()
+    if (e.key === 'Enter') {
+      if (procSel >= 0 && m[procSel]) $('#procInput').value = m[procSel]
+      addProc()
+    }
+  }
+
+  function addProc() {
+    const v = normProc($('#procInput').value)
+    if (!v) return
+    $('#procInput').value = ''
+    closeProcList()
+    const list = config.processes || []
+    if (list.includes(v)) return
+    saveConfig({ processes: [...list, v] })
+  }
+
+  function renderProcChips() {
+    const box = $('#procChips')
+    if (!box) return
+    const list = config.processes || []
+    box.innerHTML = list.map((p) => {
+      const live = runningProcs.includes(p)
+      return `<span class="chip${live ? ' live' : ''}" title="${live ? '正在运行' : '未运行'}">
+        <b>${esc(p)}</b><span class="x" data-proc="${esc(p)}">✕</span></span>`
+    }).join('')
+    for (const x of box.querySelectorAll('.x')) {
+      x.onclick = () => saveConfig({ processes: list.filter((p) => p !== x.dataset.proc) })
+    }
+    const warn = $('#procWarn')
+    if (warn) warn.remove()
+    if (config.onlyWhenRunning && !list.length) {
+      box.insertAdjacentHTML('afterend',
+        '<div class="chips-empty" id="procWarn">列表为空，此规则不生效（书签保持显示）</div>')
+    }
+  }
+
+  function setToggle(sel, on) { $(sel).classList.toggle('on', !!on) }
+
+  // 正在打字的框不动它 —— 见 syncUI 里的说明
+  function setPath(sel, v) {
+    const el = $(sel)
+    if (el && el !== document.activeElement) el.value = v || ''
+  }
+
+  // --- 定时热身任务 ----------------------------------------------------
+  // 5 小时窗口从窗口内第一次请求起算，提前发一条就能把窗口点着。真正的定时和
+  // 发送都在主进程，这里只负责编辑那份 config.schedules。
+  const DAY_LABELS = ['日', '一', '二', '三', '四', '五', '六']
+  const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6]
+  // 只有 Claude 的凭证是完整 OAuth token，其余源发不出去（跟 sources.js 的判断一致）
+  const canWarmup = (id) => /^claude:\d+$/.test(String(id))
+  const schedDays = (s) => (Array.isArray(s.days) && s.days.length ? s.days : EVERY_DAY)
+  let schedSig = ''
+  // 展开的任务。存在渲染进程里不落盘：折叠只是看的方式，不是任务本身的设置。
+  const schedOpen = new Set()
+
+  // 拆成时分两段喂给下拉。时间串万一坏了就回落 12:00，下拉本身产不出非法值。
+  function schedHM(s) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(s.time || ''))
+    const h = m ? Math.min(23, Number(m[1])) : 12
+    const min = m ? Math.min(59, Number(m[2])) : 0
+    return [String(h).padStart(2, '0'), String(min).padStart(2, '0')]
+  }
+  // 通用下拉：按钮 + 一层自建弹层。opts 是 [{v, label}]，cur 是当前的 v。
+  const numOpts = (n) => Array.from({ length: n }, (_, i) => {
+    const v = String(i).padStart(2, '0')
+    return { v, label: v }
+  })
+  const ddPick = (opts, cur, cls = '') => `
+    <span class="dd${cls ? ' ' + cls : ''}" data-v="${esc(cur)}">
+      <span class="dd-val">${esc((opts.find((o) => o.v === cur) || opts[0] || {}).label ?? '')}</span>
+      <span class="dd-car">⌄</span>
+      <div class="dd-menu">${opts.map((o) =>
+        `<div class="dd-opt${o.v === cur ? ' on' : ''}" data-v="${esc(o.v)}">${esc(o.label)}</div>`).join('')}</div>
+    </span>`
+
+  function closeDropdowns() {
+    for (const d of document.querySelectorAll('.dd.open')) d.classList.remove('open', 'up')
+  }
+  // 点别处收起。点在 .dd 里的交给它自己处理，这里不插手。
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.dd')) closeDropdowns()
+  })
+
+  function wireDropdown(dd, onPick) {
+    dd.onclick = (e) => {
+      const opt = e.target.closest('.dd-opt')
+      if (opt) {
+        dd.dataset.v = opt.dataset.v
+        dd.querySelector('.dd-val').textContent = opt.textContent
+        for (const o of dd.querySelectorAll('.dd-opt')) o.classList.toggle('on', o === opt)
+        closeDropdowns()
+        onPick(opt.dataset.v)
+        return
+      }
+      const willOpen = !dd.classList.contains('open')
+      closeDropdowns() // 同时只开一个
+      if (!willOpen) return
+      dd.classList.add('open')
+      const menu = dd.querySelector('.dd-menu')
+      const room = $('#drawerBody').getBoundingClientRect().bottom - dd.getBoundingClientRect().bottom
+      dd.classList.toggle('up', room < 184) // 弹层最高 176 + 间距
+      const on = menu.querySelector('.dd-opt.on')
+      if (on) menu.scrollTop = Math.max(0, on.offsetTop - menu.clientHeight / 2) // 当前值居中
+    }
+  }
+
+  // 跟卡片列表和「面板显示」用同一套排序，三处看到的顺序才是一致的
+  function schedTargets() {
+    const order = config.order || []
+    const rank = (id) => { const i = order.indexOf(id); return i === -1 ? 999 : i }
+    return (last?.accounts || []).slice()
+      .sort((a, b) => rank(a.id) - rank(b.id))
+      .map((a) => ({ id: a.id, name: aName(a), ok: canWarmup(a.id) }))
+  }
+
+  function findSched(id) { return (config.schedules || []).find((s) => s.id === id) }
+
+  function patchSched(id, patch) {
+    saveConfig({
+      schedules: (config.schedules || []).map((s) => (s.id === id ? { ...s, ...patch } : s)),
+    }, { sync: false })
+  }
+
+  // 新任务默认勾上所有发得出去的账号——用户加任务就是为了发，空着还得再点一遍
+  function newSched() {
+    const s = {
+      id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name: '热身', time: '12:00', days: [...EVERY_DAY], message: '', enabled: true,
+      waitReset: true, // 推荐开着：到点撞上倒计时就等窗口重置再补一次，否则这次热身白丢
+      targets: schedTargets().filter((t) => t.ok).map((t) => t.id),
+    }
+    schedOpen.add(s.id) // 刚建出来就是要填的，别让用户再点一下展开
+    return s
+  }
+
+  const hhmm = (t) => new Date(Number(t)).toLocaleString('zh-CN',
+    { hour12: false, hour: '2-digit', minute: '2-digit' })
+
+  function nextRunText(s) {
+    if (s.enabled === false) return '已关闭'
+    if (!/^\d{1,2}:\d{2}$/.test(String(s.time || ''))) return '时间格式无效'
+    if (!(s.targets || []).length) return '未选择目标账号'
+    // 挂起中：正等窗口重置，这才是真正的下一次动作，别显示明天那一次
+    if (s.resumeAt) return `窗口重置后补发 ${hhmm(s.resumeAt)}`
+    const [h, m] = s.time.split(':').map(Number)
+    const days = schedDays(s)
+    for (let i = 0; i < 8; i++) {
+      const d = new Date()
+      d.setDate(d.getDate() + i)
+      d.setHours(h, m, 0, 0)
+      if (d.getTime() <= Date.now() || !days.includes(d.getDay())) continue
+      return `下次 ${i === 0 ? '今天' : i === 1 ? '明天' : '周' + DAY_LABELS[d.getDay()]} ${s.time}`
+    }
+    return '没有匹配的日期'
+  }
+
+  function showSchedResult(el, res) {
+    if (!res || !Array.isArray(res.detail) || !res.detail.length) {
+      el.className = 'sched-last'; el.textContent = ''; el.title = ''; return
+    }
+    const bad = res.detail.filter((d) => !d.ok)
+    const skip = res.detail.filter((d) => d.ok && d.skipped)
+    const sent = res.detail.length - bad.length - skip.length
+    const when = new Date(res.at).toLocaleString('zh-CN',
+      { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    // 挂起了就把补发时刻说出来，否则「跳过」看着像这次热身就这么没了
+    const tail = res.resumeAt ? `，${hhmm(res.resumeAt)} 补发` : ''
+    if (bad.length) {
+      el.className = 'sched-last bad'
+      el.textContent = `${when} 已发送 ${sent}/${res.detail.length} · ${bad[0].error}`
+    } else if (!sent) {
+      // 全被挡下来了：窗口还在计时，等它重置完会自己再试一次，不是错误
+      el.className = 'sched-last'
+      el.textContent = `${when} 全部跳过 · ${skip[0].info.replace('已跳过 · ', '')}${tail}`
+    } else {
+      el.className = 'sched-last good'
+      el.textContent = `${when} 已发送 ${sent} 个账号` +
+        (skip.length ? `，跳过 ${skip.length} 个${tail}` : '')
+    }
+    el.title = res.detail.map((d) => `${d.id}: ${d.ok ? (d.info || '已发送') : d.error}`).join('\n')
+  }
+
+  // 只刷会变的文字，不碰输入框——否则打字打到一半就被重建
+  function updateSchedStatus() {
+    for (const el of document.querySelectorAll('#schedList .sched')) {
+      const s = findSched(el.dataset.id)
+      if (!s) continue
+      el.classList.toggle('off', s.enabled === false)
+      // 折叠头是收起时唯一看得见的东西，名字/时间/目标数都得跟着改
+      el.querySelector('.sched-title').textContent = s.name || '未命名'
+      el.querySelector('.sched-when').textContent =
+        `${schedHM(s).join(':')} · ${(s.targets || []).length} 个账号`
+      el.querySelector('.sched-next').textContent = nextRunText(s)
+      const lastEl = el.querySelector('.sched-last')
+      if (!lastEl.dataset.busy) showSchedResult(lastEl, s.lastResult)
+    }
+  }
+
+  function renderSchedules(force) {
+    const box = $('#schedList')
+    if (!box) return
+    const list = config.schedules || []
+    const targets = schedTargets()
+    // 只有任务集合或可选账号集合变了才重建，其余情况走 updateSchedStatus
+    const sig = list.map((s) => s.id).join(',') + '|' + targets.map((t) => t.id).join(',')
+    if (!force && sig === schedSig) return updateSchedStatus()
+    schedSig = sig
+
+    if (!list.length) { box.innerHTML = '<div class="sched-empty">还没有任务</div>'; return }
+    box.innerHTML = list.map((s) => {
+      const days = schedDays(s)
+      const picked = s.targets || []
+      const [hh, mm] = schedHM(s)
+      return `
+      <div class="sched${s.enabled === false ? ' off' : ''}${schedOpen.has(s.id) ? ' open' : ''}" data-id="${esc(s.id)}">
+        <div class="sched-head">
+          <span class="caret">▶</span>
+          <span class="sched-title"></span>
+          <span class="sched-when"></span>
+          <div class="toggle sched-on${s.enabled === false ? '' : ' on'}"></div>
+        </div>
+        <div class="sched-body">
+          <input class="sched-name" type="text" placeholder="任务名" value="${esc(s.name || '')}" />
+          <div class="sched-line">
+            <span class="timesel">
+              ${ddPick(numOpts(24), hh)}
+              <span class="colon">:</span>
+              ${ddPick(numOpts(60), mm)}
+            </span>
+            <input class="sched-msg" type="text" placeholder="发送文本" value="${esc(s.message ?? '')}" />
+          </div>
+          <div class="days">${DAY_LABELS.map((d, i) =>
+            `<span class="d${days.includes(i) ? ' on' : ''}" data-day="${i}">${d}</span>`).join('')}</div>
+          <div class="tgt-label">发送目标</div>
+          <div class="tgts">${targets.length ? targets.map((t) => `
+            <div class="tgt${t.ok ? (picked.includes(t.id) ? ' on' : '') : ' na'}"${t.ok ? ` data-tgt="${esc(t.id)}"` : ''}>
+              <span class="box"></span><span class="tname">${esc(t.name)}</span>
+              ${t.ok ? '' : '<span class="na-tag">不支持</span>'}
+            </div>`).join('') : '<div class="sched-empty">等待额度数据…</div>'}</div>
+          <div class="tgt sched-wait${s.waitReset === false ? '' : ' on'}" title="到点时窗口若还在计时，就挂起等它重置，重置后补发一次">
+            <span class="box"></span><span class="tname">倒计时中则等重置后补发（推荐）</span>
+          </div>
+        </div>
+        <div class="sched-last"></div>
+        <div class="sched-foot">
+          <span class="sched-next"></span>
+          <button class="sched-run">立即发送</button>
+          <button class="sched-del">删除</button>
+        </div>
+      </div>`
+    }).join('')
+
+    for (const el of box.querySelectorAll('.sched')) wireSchedule(el)
+    updateSchedStatus()
+  }
+
+  function wireSchedule(el) {
+    const id = el.dataset.id
+    const name = el.querySelector('.sched-name')
+    const msg = el.querySelector('.sched-msg')
+
+    // 点头部收放。开关也在头里，点它只切启用，不要顺手把卡片折起来。
+    el.querySelector('.sched-head').onclick = (e) => {
+      if (e.target.closest('.sched-on')) return
+      const open = !el.classList.contains('open')
+      el.classList.toggle('open', open)
+      if (open) schedOpen.add(id); else schedOpen.delete(id)
+    }
+
+    name.addEventListener('input', () => {
+      patchSched(id, { name: name.value })
+      updateSchedStatus() // 折叠头上的标题跟着改
+    })
+    msg.addEventListener('input', () => patchSched(id, { message: msg.value }))
+    for (const dd of el.querySelectorAll('.timesel .dd')) {
+      wireDropdown(dd, () => {
+        const [h, m] = [...el.querySelectorAll('.timesel .dd')].map((x) => x.dataset.v)
+        patchSched(id, { time: `${h}:${m}` })
+        updateSchedStatus()
+      })
+    }
+
+    el.querySelector('.sched-on').onclick = (e) => {
+      const s = findSched(id)
+      if (!s) return
+      const enabled = s.enabled === false
+      patchSched(id, { enabled })
+      e.currentTarget.classList.toggle('on', enabled)
+      updateSchedStatus()
+    }
+
+    for (const d of el.querySelectorAll('.d')) {
+      d.onclick = () => {
+        const s = findSched(id)
+        if (!s) return
+        const i = Number(d.dataset.day)
+        const cur = schedDays(s)
+        const next = cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort()
+        if (!next.length) return // 至少留一天，全关掉等于把任务静默停掉，不如用开关
+        patchSched(id, { days: next })
+        d.classList.toggle('on', next.includes(i))
+        updateSchedStatus()
+      }
+    }
+
+    for (const t of el.querySelectorAll('[data-tgt]')) {
+      t.onclick = () => {
+        const s = findSched(id)
+        if (!s) return
+        const tid = t.dataset.tgt
+        const cur = s.targets || []
+        const next = cur.includes(tid) ? cur.filter((x) => x !== tid) : [...cur, tid]
+        patchSched(id, { targets: next })
+        t.classList.toggle('on', next.includes(tid))
+        updateSchedStatus()
+      }
+    }
+
+    const wait = el.querySelector('.sched-wait')
+    wait.onclick = () => {
+      const on = !wait.classList.contains('on')
+      wait.classList.toggle('on', on)
+      patchSched(id, { waitReset: on })
+    }
+
+    el.querySelector('.sched-del').onclick = () => {
+      schedOpen.delete(id)
+      saveConfig({ schedules: (config.schedules || []).filter((s) => s.id !== id) }, { sync: false })
+      renderSchedules(true)
+    }
+
+    const runBtn = el.querySelector('.sched-run')
+    const lastEl = el.querySelector('.sched-last')
+    runBtn.onclick = async () => {
+      if (!window.api?.scheduleRun) return
+      runBtn.disabled = true
+      lastEl.dataset.busy = '1'
+      lastEl.className = 'sched-last'
+      lastEl.textContent = '发送中…'
+      try {
+        showSchedResult(lastEl, { at: Date.now(), detail: await api.scheduleRun(id) })
+      } catch (e) {
+        lastEl.className = 'sched-last bad'
+        // invoke 抛错会被包成 "Error invoking remote method ...: Error: 真正的话"
+        lastEl.textContent = String(e?.message || e).replace(/^.*?Error: /, '')
+      }
+      delete lastEl.dataset.busy
+      runBtn.disabled = false
+    }
+  }
+
+  // 拖动排序进行中的标志。轮询随时可能回数据，syncUI 会整块重建 #panels，
+  // 把手上按着的那一行连同 pointer capture 一起销毁 —— 拖动结果就永远存不下去了。
+  let dragging = false
+  let pendingSync = false
+
+  function syncUI() {
+    $('#interval').value = config.intervalSec
+    setToggle('#hideEmail', config.hideEmail)
+    setToggle('#autoShowAfterReset', config.autoShowAfterReset !== false)
+    setToggle('#newapiPriority', config.newapiPriority !== false)
+    setToggle('#hideBookmark', !!config.bookmark?.hidden)
+    $('#tabSize').value = config.bookmark?.size ?? 72
+    $('#tabSizeH').value = config.bookmark?.height ?? config.bookmark?.size ?? 72
+    $('#tabRounded').value = config.bookmark?.rounded ?? 8
+    $('#panelHeight').value = config.panelHeight ?? 560
+    setToggle('#panelAuto', !!config.panelAuto)
+    setToggle('#onlyWhenRunning', config.onlyWhenRunning !== false)
+    // 数据源路径。syncUI 每轮询一次就跑一遍（onData 里），而路径又长又是手打的 ——
+    // 正在输入的那个框不能覆盖，否则打到一半会被整段刷掉。
+    setPath('#srcNewapi', config.sources?.newapi)
+    setPath('#srcGproxy', config.sources?.gproxy)
+    setPath('#srcCodex', config.sources?.codex)
+    renderProcChips()
+    renderSchedules()
+
+    // 拖动期间不重建面板行，记一笔等 pointerup 之后补做。倒计时只改文本，照常刷。
+    if (dragging) { pendingSync = true; updateLimitCountdowns(); return }
+
+    // 面板行：由真实账号生成（每个 Cline 一行），带拖拽手柄可排序
+    const accs = (last && last.accounts || []).slice()
+    const order = config.order || []
+    accs.sort((a, b) => {
+      const ia = order.indexOf(a.id), ib = order.indexOf(b.id)
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+    })
+    const panels = $('#panels')
+    panels.innerHTML = accs.map((a) => {
+      const resetAt = limitedResetAt(a)
+      return `
+      <div class="row" data-id="${esc(a.id)}"${resetAt ? ` data-limit-reset="${resetAt}"` : ''}>
+        <span class="drag" title="拖动排序">⠿</span>
+        <div class="account-field">
+          ${resetAt ? '<span class="limit-left"></span>' : ''}
+          <input type="text" class="account-name" placeholder="${esc(aName(a))}" />
+        </div>
+        <div class="toggle"></div>
+      </div>`
+    }).join('')
+
+    const rows = [...panels.querySelectorAll('.row')]
+    accs.forEach((a, i) => {
+      const row = rows[i]
+      const toggle = row?.querySelector('.toggle')
+      const inp = row?.querySelector('.account-name')
+      if (toggle) {
+        toggle.classList.toggle('on', config.visible[a.id] !== false)
+        toggle.onclick = () => setAccountVisible(a, config.visible[a.id] === false)
+      }
+      if (inp) {
+        inp.value = config.names[a.id] || ''
+        inp.addEventListener('input', () => {
+          saveConfig({ names: { ...config.names, [a.id]: inp.value.trim() } }, { sync: false })
+        })
+      }
+    })
+    wireDragReorder()
+    updateLimitCountdowns()
+  }
+
+  function aName(a) {
+    const custom = config.names[a.id]
+    if (custom) return custom
+    return a.id === 'cline' ? a.name : PANELS.find((p) => p.key === a.id)?.label || a.name
+  }
+
+  // 指针拖动排序：不依赖透明 Electron 窗口里不稳定的 HTML5 drag/drop。
+  // 几何只在 pointerdown 量一次，拖动全程只写 transform（合成器就能处理，不触发 layout），
+  // 真正的 DOM 重排和落库都推迟到 pointerup 做一次。
+  function wireDragReorder() {
+    const box = $('#panels')
+    let st = null
+
+    const reset = () => {
+      if (!st) return
+      for (const r of st.rows) r.style.transform = ''
+      st.el.classList.remove('lift')
+      box.classList.remove('dragging')
+      document.body.classList.remove('dragging')
+      st = null
+      dragging = false
+    }
+
+    for (const handle of box.querySelectorAll('.drag')) {
+      handle.onpointerdown = (e) => {
+        if (e.button !== 0) return
+        const el = handle.closest('.row')
+        const rows = [...box.querySelectorAll('.row')]
+        if (!el || rows.length < 2) return
+        const rects = rows.map((r) => r.getBoundingClientRect())
+        const from = rows.indexOf(el)
+        st = {
+          el, rows, from, to: from, pid: e.pointerId, startY: e.clientY,
+          centers: rects.map((r) => r.top + r.height / 2),
+          step: rects[1].top - rects[0].top,   // 行高一致，一个步长够用
+        }
+        dragging = true
+        handle.setPointerCapture(e.pointerId)
+        el.classList.add('lift')
+        box.classList.add('dragging')
+        document.body.classList.add('dragging')
+        e.preventDefault()
+      }
+
+      handle.onpointermove = (e) => {
+        if (!st || e.pointerId !== st.pid) return
+        const dy = e.clientY - st.startY
+        st.el.style.transform = `translateY(${dy}px)`
+
+        // 落点 = 有多少个别的行的中心排在拖动行当前中心之前
+        const center = st.centers[st.from] + dy
+        let to = 0
+        for (let i = 0; i < st.centers.length; i++) {
+          if (i !== st.from && st.centers[i] < center) to++
+        }
+        if (to === st.to) return
+        st.to = to
+
+        // 其余行让位，同样只写 transform
+        for (let i = 0; i < st.rows.length; i++) {
+          if (i === st.from) continue
+          let shift = 0
+          if (to > st.from && i > st.from && i <= to) shift = -st.step
+          else if (to < st.from && i >= to && i < st.from) shift = st.step
+          st.rows[i].style.transform = shift ? `translateY(${shift}px)` : ''
+        }
+      }
+
+      const finish = (e) => {
+        if (!st || (e && e.pointerId !== st.pid)) return
+        const { el, rows, from, to } = st
+        reset()
+        if (to !== from) {
+          const arr = rows.slice()
+          arr.splice(from, 1)
+          arr.splice(to, 0, el)
+          for (const r of arr) box.appendChild(r)   // appendChild 移动已有节点
+          const order = [...box.querySelectorAll('.row')].map((x) => x.dataset.id)
+          saveConfig({ order }, { sync: false })    // sync:false → 只 render 卡片，不重建这里
+        }
+        // 拖动期间被挡下的那次刷新，现在补上
+        if (pendingSync) { pendingSync = false; syncUI() }
+      }
+      handle.onpointerup = finish
+      handle.onpointercancel = finish
+    }
+  }
+
+  function loadDisplays() {
+    if (!window.api?.displaysList) return
+    api.displaysList().then((ds) => {
+      displays = ds
+      const cur = String(config.bookmark?.displayId || ds.find((d) => d.primary)?.id || ds[0]?.id)
+      const opts = ds.map((d) => ({
+        v: String(d.id),
+        label: `${d.label}${d.primary ? ' (主)' : ''} — ${d.bounds.width}x${d.bounds.height}`,
+      }))
+      const host = $('#displayPick')
+      host.innerHTML = ddPick(opts, cur, 'wide')
+      wireDropdown(host.querySelector('.dd'), (v) => {
+        saveConfig({ bookmark: { ...config.bookmark, displayId: parseInt(v, 10) } })
+      })
+    })
+  }
+
+  // --- UI events ------------------------------------------------------
+  $('#gear').onclick = () => {
+    setupDrawerEvents()
+    loadProcs()
+    $('#drawer').classList.add('open')
+    if (window.api?.setDrawerOpen) api.setDrawerOpen(true)
+  }
+  $('#closePanel').onclick = () => api.panelClose()
+
+  function until(iso) {
+    if (!iso) return ''
+    const m = (new Date(iso) - Date.now()) / 60000
+    if (!isFinite(m) || m <= 0) return ''
+    if (m < 60) return `${Math.ceil(m)}分后`
+    if (m < 1440) return `${Math.floor(m / 60)}小时${Math.round(m % 60)}分后`
+    return `${Math.floor(m / 1440)}天${Math.round((m % 1440) / 60)}小时后`
+  }
+
+  function limitedResetAt(a) {
+    const resets = (a.windows || [])
+      .filter((w) => Number(w.percent) >= 100)
+      .map((w) => new Date(w.resetsAt).getTime())
+      .filter((t) => Number.isFinite(t) && t > Date.now())
+    return resets.length ? Math.max(...resets) : null
+  }
+
+  function compactUntil(resetAt) {
+    const mins = Math.ceil((Number(resetAt) - Date.now()) / 60000)
+    if (!Number.isFinite(mins) || mins <= 0) return ''
+    if (mins < 60) return `${mins}m`
+    const hours = Math.ceil(mins / 60)
+    if (hours < 24) return `${hours}h`
+    const days = Math.floor(hours / 24)
+    return `${days}d ${hours % 24}h`
+  }
+
+  function updateLimitCountdowns() {
+    for (const row of document.querySelectorAll('#panels [data-limit-reset]')) {
+      const label = row.querySelector('.limit-left')
+      if (!label) continue
+      const text = compactUntil(row.dataset.limitReset)
+      label.textContent = text
+      label.hidden = !text
+      label.classList.toggle('soon', Number(row.dataset.limitReset) - Date.now() <= 5 * 60 * 60 * 1000)
+    }
+  }
+
+  function setAccountVisible(a, visible) {
+    const hiddenUntil = { ...config.hiddenUntil }
+    if (visible) {
+      delete hiddenUntil[a.id]
+    } else {
+      const resets = a.windows.map((w) => new Date(w.resetsAt).getTime()).filter((t) => isFinite(t) && t > Date.now())
+      if (resets.length) hiddenUntil[a.id] = Math.max(...resets)
+      else delete hiddenUntil[a.id]
+    }
+    saveConfig({ visible: { ...config.visible, [a.id]: visible }, hiddenUntil })
+  }
+
+  function restoreResetAccounts() {
+    if (config.autoShowAfterReset === false) return
+    const visible = { ...config.visible }
+    const hiddenUntil = { ...config.hiddenUntil }
+    let changed = false
+    for (const a of last?.accounts || []) {
+      const deadline = Number(hiddenUntil[a.id])
+      if (visible[a.id] === false && deadline && Date.now() >= deadline) {
+        visible[a.id] = true
+        delete hiddenUntil[a.id]
+        changed = true
+      }
+    }
+    if (!changed) return
+    config = { ...config, visible, hiddenUntil }
+    api.configSet(config)
+  }
+
+  function displayName(a) {
+    const i = a.name.lastIndexOf(' · ')
+    const originalHead = i >= 0 ? a.name.slice(0, i) : a.name
+    const email = i >= 0 ? a.name.slice(i + 3) : (a.name.includes('@') ? a.name : '')
+    const head = config.names[a.id] || originalHead || '账号'
+    if (config.hideEmail || !email) return head
+    return `${head} · ${email}`
+  }
+
+  function card(a) {
+    if (config.visible[a.id] === false) return ''
+    const rows = a.windows.map((w) => `
+      <div class="row">
+        <div class="rowtop"><span>${esc(w.label)}</span>&nbsp;<b>${Math.round(w.percent)}%</b>
+          <span class="r">${esc(until(w.resetsAt))}</span></div>
+        <div class="bar"><i style="width:${Math.min(100, Math.max(2, w.percent))}%;background:${color(w.percent)}"></i></div>
+      </div>`).join('')
+    const msg = a.error ? `<div class="msg err">${esc(a.error)}</div>`
+      : a.stale ? `<div class="msg warn">${esc(a.stale)}</div>` : ''
+    // 有 NewAPI 渠道 id 的卡片：加眼睛(隐藏)+开关(禁用)图标，直接同步渠道管理
+    const icons = a.$channelId != null ? `
+      <div class="icons">
+        <button class="icon-btn" title="隐藏" data-eye="${esc(a.id)}">👁</button>
+        <button class="icon-btn${a.disabled ? ' on' : ''}" title="禁用/启用渠道" data-tog="${a.$channelId}">◉</button>
+      </div>` : ''
+    return `<div class="card${a.disabled ? ' off' : ''}">
+      <div class="head">
+        ${a.$rank ? `<span class="rank${a.$rank === 1 ? ' top' : ''}" title="${esc(`NewAPI 优先级第 ${a.$rank} 名 · ${a.$rankWhy || ''}`)}">${a.$rank}</span>` : ''}
+        <span class="name">${esc(displayName(a))}</span>
+        ${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
+        ${a.extra ? `<span class="extra">${esc(a.extra)}</span>` : ''}
+        ${icons}
+      </div>${rows}${msg}</div>`
+  }
+
+  function render() {
+    if (!last) return
+    // 面板卡片顺序跟随设置里的拖拽排序
+    const order = config.order || []
+    const visible = last.accounts
+      .filter((a) => config.visible[a.id] !== false)
+      .sort((a, b) => {
+        const ia = order.indexOf(a.id), ib = order.indexOf(b.id)
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+      })
+    $('#list').innerHTML = visible.length
+      ? visible.map(card).join('')
+      : `<div class="empty">${esc(last.error || '无数据')}</div>`
+    // 实际卡片高度 + 列表上下内边距 + 标题栏高度，不取受当前窗口裁剪的 scrollHeight。
+    if (window.api?.contentHeight && visible.length) {
+      const cards = [...$('#list').querySelectorAll('.card')]
+      const cardH = cards.reduce((sum, el) => sum + el.getBoundingClientRect().height, 0)
+      api.contentHeight(Math.ceil(cardH + Math.max(0, cards.length - 1) * 9 + 28 + 52))
+    }
+    const d = new Date(last.at)
+    $('#t').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} 更新`
+
+    // 卡片级图标：眼睛切换面板隐藏，开关翻转 NewAPI 渠道禁用状态
+    $('#list').querySelectorAll('[data-eye]').forEach((b) => {
+      b.onclick = () => {
+        const id = b.dataset.eye
+        const a = last.accounts.find((x) => x.id === id)
+        if (a) setAccountVisible(a, config.visible[id] === false)
+      }
+    })
+    $('#list').querySelectorAll('[data-tog]').forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true
+        const next = await api.channelToggle(parseInt(b.dataset.tog, 10))
+        b.disabled = false
+        b.classList.toggle('on', next === 2)
+      }
+    })
+  }
+
+  api.onData((d) => { last = d; restoreResetAccounts(); syncUI(); render() })
+  // 主进程跑完一次定时任务后回传，把 lastRunAt/lastResult 同步过来
+  api.onSchedules?.((list) => { config.schedules = list; renderSchedules() })
+  api.onDataRefresh(() => api.refresh())
+  api.onExpanded((open) => {
+    document.body.classList.toggle('open', open)
+    // 面板收起时抽屉也必须归位，否则主进程一直以为设置开着，自适应高度再也不生效
+    if (!open && $('#drawer').classList.contains('open')) {
+      $('#drawer').classList.remove('open')
+      if (window.api?.setDrawerOpen) api.setDrawerOpen(false)
+    }
+  })
+  $('#r').onclick = () => {
+  $('#r').classList.remove('spin')
+  // 强制重排，让上一轮动画结束后能再转
+  void $('#r').offsetWidth
+  $('#r').classList.add('spin')
+  api.refresh()
+}
+
+  document.body.addEventListener('mouseenter', () => api.hover(true))
+  document.body.addEventListener('mouseleave', () => api.hover(false))
+  setInterval(() => { render(); updateLimitCountdowns(); updateSchedStatus() }, 30000)
+
+  loadConfig()
+</script>

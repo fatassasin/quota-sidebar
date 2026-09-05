@@ -1,0 +1,371 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>额度侧板</title>
+<style>
+  :root {
+    --bg: rgba(18, 18, 22, .82);
+    --card: rgba(255, 255, 255, .045);
+    --line: rgba(255, 255, 255, .09);
+    --fg: #e8e8ec;
+    --dim: #8b8b96;
+    --ok: #3ecf8e;
+    --warn: #f5b544;
+    --bad: #f2555a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: transparent; }
+  body {
+    font: 13px/1.45 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--fg); -webkit-font-smoothing: antialiased;
+    display: flex; justify-content: flex-end;
+  }
+
+  #panel {
+    width: 354px; flex: none; height: 100%;
+    background: var(--bg); backdrop-filter: blur(22px) saturate(160%);
+    border-left: 1px solid var(--line);
+    display: flex; flex-direction: column;
+    opacity: 0; transform: translateX(12px);
+    transition: opacity .22s ease, transform .28s cubic-bezier(.2, .9, .25, 1);
+  }
+  body.open #panel { opacity: 1; transform: none; }
+
+  header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 14px 16px 11px; border-bottom: 1px solid var(--line);
+    -webkit-app-region: drag;
+  }
+  header h1 { font-size: 13px; font-weight: 600; letter-spacing: .3px; }
+  header .t { margin-left: auto; color: var(--dim); font-size: 11px; -webkit-app-region: no-drag; }
+  header button {
+    -webkit-app-region: no-drag;
+    background: none; border: 0; color: var(--dim); cursor: pointer;
+    font-size: 13px; padding: 2px 4px; border-radius: 4px;
+  }
+  header button:hover { color: var(--fg); background: var(--card); }
+
+  #list { flex: 1; overflow-y: auto; padding: 10px 14px 18px; }
+  #list::-webkit-scrollbar { width: 6px; }
+  #list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 13px; margin-bottom: 9px;
+  }
+  .card.off { opacity: .45; }
+  .head { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; }
+  .name {
+    font-weight: 600; font-size: 12.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .badge {
+    flex: none; font-size: 10px; padding: 1px 6px; border-radius: 20px;
+    background: rgba(255, 255, 255, .08); color: var(--dim); letter-spacing: .3px;
+  }
+  .extra { margin-left: auto; flex: none; font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+  .row { margin-top: 9px; }
+  .rowtop { display: flex; font-size: 11px; color: var(--dim); margin-bottom: 4px; }
+  .rowtop b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .rowtop .r { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .07); overflow: hidden; }
+  .bar i {
+    display: block; height: 100%; border-radius: 3px;
+    transition: width .6s cubic-bezier(.34, 1.56, .64, 1);
+  }
+
+  .msg { font-size: 11px; margin-top: 8px; padding: 5px 8px; border-radius: 6px; }
+  .msg.err { color: var(--bad); background: rgba(242, 85, 90, .1); }
+  .msg.warn { color: var(--warn); background: rgba(245, 181, 68, .1); }
+  .empty { color: var(--dim); text-align: center; padding: 30px 0; font-size: 12px; }
+
+  /* settings drawer — 毛玻璃 */
+  #drawer {
+    position: absolute; inset: 0; z-index: 10;
+    background: rgba(14, 14, 18, .72); backdrop-filter: blur(28px) saturate(160%);
+    transform: translateX(100%); transition: transform .28s cubic-bezier(.2, .9, .25, 1);
+    display: flex; flex-direction: column; padding: 16px 16px 12px;
+    overflow-y: auto;
+  }
+  #drawer::-webkit-scrollbar { width: 6px; }
+  #drawer::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  #drawer.open { transform: none; }
+  #drawer header { border: 0; padding: 0 0 14px; }
+  #drawer h2 { font-size: 13px; font-weight: 600; }
+  #drawer .close { font-size: 16px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 11px; color: var(--dim); margin-bottom: 5px; }
+  .field input[type=text], .field input[type=number] {
+    width: 100%; background: var(--card); border: 1px solid var(--line);
+    border-radius: 6px; color: var(--fg); padding: 7px 9px; font-size: 12.5px; outline: none;
+  }
+  .field input[type=text]:focus, .field input[type=number]:focus { border-color: rgba(74, 158, 255, .5); }
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0; font-size: 12.5px;
+  }
+  .toggle {
+    position: relative; width: 36px; height: 20px; flex: none;
+    background: rgba(255,255,255,.12); border-radius: 20px; cursor: pointer;
+    transition: background .2s;
+  }
+  .toggle.on { background: var(--ok); }
+  .toggle::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: transform .2s;
+  }
+  .toggle.on::after { transform: translateX(16px); }
+
+  .group { margin-top: 4px; }
+  .group .label { font-size: 11px; color: var(--dim); margin-bottom: 6px; }
+  .group .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .group .row input[type=text] { flex: 1; }
+  .group .row .toggle { margin-left: auto; }
+  .group .name-hint { flex: none; font-size: 10.5px; color: var(--dim); width: 52px; }
+
+  .section-title {
+    font-size: 10.5px; color: var(--dim); letter-spacing: .4px;
+    margin: 14px 0 6px; text-transform: uppercase;
+  }
+
+  select {
+    width: 100%; background: var(--card); border: 1px solid var(--line);
+    border-radius: 6px; color: var(--fg); padding: 7px 9px; font-size: 12.5px; outline: none;
+  }
+  select:focus { border-color: rgba(74, 158, 255, .5); }
+  select option { background: #1b1b20; }
+body{background:#1b1b20;justify-content:center}#edge{display:none}#panel{width:354px;height:100vh}</style>
+
+<div id="panel">
+  <header>
+    <h1>额度</h1>
+    <span class="t" id="t">载入中</span>
+    <button id="r" title="刷新">↻</button>
+    <button id="gear" title="设置">⚙</button>
+    <button id="closePanel" title="收起">✕</button>
+  </header>
+  <div id="list"><div class="empty">读取中…</div></div>
+</div>
+
+<div id="drawer">
+  <header>
+    <h2>设置</h2>
+    <button class="close" id="close">✕</button>
+  </header>
+
+  <div class="section-title">通用</div>
+  <div class="field">
+    <label>同步间隔（秒）</label>
+    <input type="number" id="interval" min="10" max="3600" />
+  </div>
+  <div class="toggle-row">
+    <span>隐藏邮箱地址</span>
+    <div class="toggle" id="hideEmail"></div>
+  </div>
+  <div class="toggle-row">
+    <span>隐藏书签块</span>
+    <div class="toggle" id="hideBookmark"></div>
+  </div>
+
+  <div class="section-title">显示器</div>
+  <div class="field">
+    <label>显示到屏幕</label>
+    <select id="displaySel"></select>
+  </div>
+
+  <div class="section-title">书签块</div>
+  <div class="field">
+    <label>尺寸（像素）</label>
+    <input type="number" id="tabSize" min="40" max="200" />
+  </div>
+  <div class="field">
+    <label>圆角（像素）</label>
+    <input type="number" id="tabRounded" min="0" max="24" />
+  </div>
+
+  <div class="section-title">面板</div>
+  <div class="field">
+    <label>展开高度（像素）</label>
+    <input type="number" id="panelHeight" min="200" max="1000" />
+  </div>
+
+  <div class="section-title">面板显示 &amp; 自定义名称</div>
+  <div class="group" id="panels"></div>
+</div>
+
+<script>window.api={onData:c=>c({"at":1786200322108,"accounts":[{"id":"claude","name":"demo@example.com","plan":"pro","windows":[{"label":"5小时","percent":78,"resetsAt":"2026-08-08T18:00:00.580649+00:00"},{"label":"周","percent":19,"resetsAt":"2026-08-14T00:00:00.580672+00:00"}],"health":"rate_limited"},{"id":"codex","name":"demo@example.com","plan":"plus","windows":[{"label":"周","percent":4,"resetsAt":"2026-08-15T16:06:02+08:00"}]},{"id":"opencode","name":"Opencode","plan":"go","windows":[],"extra":"已用 $262.21 · 5h $10.98"},{"id":"cline:Cline","name":"Cline · demo@example.com","plan":"ClinePass","windows":[{"label":"5小时","percent":0},{"label":"周","percent":100,"resetsAt":"2026-08-11T18:55:30.595093733Z"},{"label":"月","percent":50,"resetsAt":"2026-09-03T18:55:30.596979615Z"}],"disabled":true,"extra":"$0.50"},{"id":"cline:Cline2","name":"Cline2 · demo2@example.com","plan":"ClinePass","windows":[{"label":"5小时","percent":94,"resetsAt":"2026-08-08T16:09:03.366724861Z"},{"label":"周","percent":99,"resetsAt":"2026-08-13T13:51:03.368089234Z"},{"label":"月","percent":49,"resetsAt":"2026-09-05T13:51:02.369353405Z"}],"disabled":false,"extra":"$0.50"},{"id":"cline:Cline3","name":"Cline3 · demo3@example.com","plan":"ClinePass","windows":[{"label":"5小时","percent":100,"resetsAt":"2026-08-08T16:03:16.364791077Z"},{"label":"周","percent":97,"resetsAt":"2026-08-13T17:16:44.366693659Z"},{"label":"月","percent":48,"resetsAt":"2026-09-05T17:16:44.368536048Z"}],"disabled":false,"extra":"$0.50"}]}),onExpanded:c=>c(true),hover:()=>{},refresh:()=>{}};
+  const $ = (s) => document.querySelector(s)
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+  const color = (p) => (p >= 90 ? 'var(--bad)' : p >= 70 ? 'var(--warn)' : 'var(--ok)')
+
+  let last = null
+  let config = { intervalSec: 60, hideEmail: true, visible: {}, names: {}, bookmark: {} }
+  let displays = []
+
+  const PANELS = [
+    { key: 'claude', label: 'Claude', renamable: true },
+    { key: 'codex', label: 'Codex', renamable: true },
+    { key: 'cline', label: 'Cline', renamable: false },
+    { key: 'opencode', label: 'Opencode', renamable: true },
+  ]
+
+  // --- config ---------------------------------------------------------
+  function loadConfig() {
+    if (!window.api?.configGet) return
+    api.configGet().then((c) => { config = { ...config, ...c }; syncUI(); render(); loadDisplays() })
+  }
+
+  function saveConfig(patch) {
+    config = { ...config, ...patch }
+    if (window.api?.configSet) api.configSet(config)
+    syncUI(); render()
+  }
+
+  function setToggle(sel, on) { $(sel).classList.toggle('on', !!on) }
+
+  function syncUI() {
+    $('#interval').value = config.intervalSec
+    setToggle('#hideEmail', config.hideEmail)
+    setToggle('#hideBookmark', !!config.bookmark?.hidden)
+    $('#tabSize').value = config.bookmark?.size ?? 72
+    $('#tabRounded').value = config.bookmark?.rounded ?? 8
+    $('#panelHeight').value = config.panelHeight ?? 560
+
+    // panel toggles + name inputs
+    const panels = $('#panels')
+    panels.innerHTML = PANELS.map((p) => `
+      <div class="row">
+        <span class="name-hint">${p.label}</span>
+        <input type="text" id="name-${p.key}" placeholder="${p.label}" ${p.renamable ? '' : 'disabled title="组面板，无法改名"'} />
+        <div class="toggle" id="vis-${p.key}"></div>
+      </div>`).join('')
+
+    for (const p of PANELS) {
+      setToggle(`#vis-${p.key}`, config.visible[p.key] !== false)
+      const inp = $(`#name-${p.key}`)
+      if (inp && !inp.disabled) inp.value = config.names[p.key] || ''
+    }
+
+    // wire events after innerHTML
+    for (const p of PANELS) {
+      $(`#vis-${p.key}`).onclick = () => {
+        saveConfig({ visible: { ...config.visible, [p.key]: config.visible[p.key] === false } })
+      }
+      const inp = $(`#name-${p.key}`)
+      if (inp && !inp.disabled) {
+        inp.addEventListener('input', () => {
+          saveConfig({ names: { ...config.names, [p.key]: inp.value.trim() } })
+        })
+      }
+    }
+  }
+
+  function loadDisplays() {
+    if (!window.api?.displaysList) return
+    api.displaysList().then((ds) => {
+      displays = ds
+      const sel = $('#displaySel')
+      const cur = config.bookmark?.displayId || ds.find((d) => d.primary)?.id || ds[0]?.id
+      sel.innerHTML = ds.map((d) =>
+        `<option value="${d.id}" ${d.id === cur ? 'selected' : ''}>${esc(d.label)}${d.primary ? ' (主)' : ''} — ${d.bounds.width}x${d.bounds.height}</option>`
+      ).join('')
+      sel.onchange = () => {
+        const id = parseInt(sel.value, 10)
+        saveConfig({ bookmark: { ...config.bookmark, displayId: id } })
+      }
+    })
+  }
+
+  // --- UI events ------------------------------------------------------
+  $('#gear').onclick = () => $('#drawer').classList.add('open')
+  $('#close').onclick = () => {
+    $('#drawer').classList.remove('open')
+    if (window.api?.panelClose) api.panelClose()
+  }
+  $('#closePanel').onclick = () => { if (window.api?.panelClose) api.panelClose(); else api.hover(false) }
+  $('#closePanel').onclick = () => api.hover(false)
+
+  $('#interval').addEventListener('change', () => {
+    saveConfig({ intervalSec: Math.max(10, parseInt($('#interval').value, 10) || 60) })
+  })
+
+  $('#hideEmail').onclick = () => saveConfig({ hideEmail: !config.hideEmail })
+  $('#hideBookmark').onclick = () => {
+    const hidden = !config.bookmark?.hidden
+    saveConfig({ bookmark: { ...config.bookmark, hidden } })
+    if (window.api?.bookmarkToggleHidden) api.bookmarkToggleHidden(hidden)
+  }
+
+  $('#tabSize').addEventListener('change', () => {
+    const size = Math.max(40, Math.min(200, parseInt($('#tabSize').value, 10) || 72))
+    saveConfig({ bookmark: { ...config.bookmark, size } })
+    if (window.api?.bookmarkSetStyle) api.bookmarkSetStyle({ size })
+  })
+  $('#tabRounded').addEventListener('change', () => {
+    const rounded = Math.max(0, Math.min(24, parseInt($('#tabRounded').value, 10) || 8))
+    saveConfig({ bookmark: { ...config.bookmark, rounded } })
+    if (window.api?.bookmarkSetStyle) api.bookmarkSetStyle({ rounded })
+  })
+  $('#panelHeight').addEventListener('change', () => {
+    saveConfig({ panelHeight: Math.max(200, Math.min(1000, parseInt($('#panelHeight').value, 10) || 560)) })
+  })
+
+  // --- data / render ---------------------------------------------------
+  function until(iso) {
+    if (!iso) return ''
+    const m = (new Date(iso) - Date.now()) / 60000
+    if (!isFinite(m) || m <= 0) return ''
+    if (m < 60) return `${Math.ceil(m)}分后`
+    if (m < 1440) return `${Math.floor(m / 60)}小时${Math.round(m % 60)}分后`
+    return `${Math.floor(m / 1440)}天${Math.round((m % 1440) / 60)}小时后`
+  }
+
+  function displayName(a) {
+    const custom = config.names[a.id]
+    const emailPart = a.name.split(' · ')[1] || a.name
+    if (custom) return custom
+    if (config.hideEmail && a.id !== 'cline') return emailPart.replace(/^[^·\s]+/, '账号')
+    if (config.hideEmail) return a.name.split(' · ')[0]
+    return a.name
+  }
+
+  function card(a) {
+    if (config.visible[a.id] === false) return ''
+    const rows = a.windows.map((w) => `
+      <div class="row">
+        <div class="rowtop"><span>${esc(w.label)}</span>&nbsp;<b>${Math.round(w.percent)}%</b>
+          <span class="r">${esc(until(w.resetsAt))}</span></div>
+        <div class="bar"><i style="width:${Math.min(100, Math.max(2, w.percent))}%;background:${color(w.percent)}"></i></div>
+      </div>`).join('')
+    const msg = a.error ? `<div class="msg err">${esc(a.error)}</div>`
+      : a.stale ? `<div class="msg warn">${esc(a.stale)}</div>` : ''
+    return `<div class="card${a.disabled ? ' off' : ''}">
+      <div class="head">
+        <span class="name">${esc(displayName(a))}</span>
+        ${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
+        ${a.extra ? `<span class="extra">${esc(a.extra)}</span>` : ''}
+      </div>${rows}${msg}</div>`
+  }
+
+  function render() {
+    if (!last) return
+    const visible = last.accounts.filter((a) => config.visible[a.id] !== false)
+    $('#list').innerHTML = visible.length
+      ? visible.map(card).join('')
+      : `<div class="empty">${esc(last.error || '无数据')}</div>`
+    const d = new Date(last.at)
+    $('#t').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} 更新`
+  }
+
+  api.onData((d) => { last = d; render() })
+  api.onDataRefresh(() => api.refresh())
+  api.onExpanded((open) => document.body.classList.toggle('open', open))
+  $('#r').onclick = () => api.refresh()
+
+  document.body.addEventListener('mouseenter', () => api.hover(true))
+  document.body.addEventListener('mouseleave', () => api.hover(false))
+  setInterval(render, 30000)
+
+  loadConfig()
+</script>

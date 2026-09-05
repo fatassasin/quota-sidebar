@@ -1,0 +1,27 @@
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('api', {
+  onData: (cb) => ipcRenderer.on('data', (_e, d) => cb(d)),
+  onExpanded: (cb) => ipcRenderer.on('expanded', (_e, v) => cb(v)),
+  onDataRefresh: (cb) => ipcRenderer.on('data:refresh', (_e) => cb()),
+  onBookmarkConfig: (cb) => ipcRenderer.on('config', (_e, bm) => cb(bm)),
+  hover: (over) => ipcRenderer.send('hover', over),
+  refresh: () => ipcRenderer.send('refresh'),
+  dataGet: () => ipcRenderer.invoke('data:get'),
+  panelClose: () => ipcRenderer.send('panel:close'),
+  configGet: () => ipcRenderer.invoke('config:get'),
+  configSet: (cfg) => ipcRenderer.invoke('config:set', cfg),
+  displaysList: () => ipcRenderer.invoke('displays:list'),
+  procsList: () => ipcRenderer.invoke('procs:list'),
+  scheduleRun: (id) => ipcRenderer.invoke('schedule:run', id),
+  onSchedules: (cb) => ipcRenderer.on('schedules', (_e, list) => cb(list)),
+  tabHover: (over) => ipcRenderer.send('tab:hover', over),
+  tabDragStart: (pt) => ipcRenderer.send('tab:drag:start', pt),
+  tabDragMove: (pt) => ipcRenderer.send('tab:drag:move', pt),
+  tabDragEnd: () => ipcRenderer.send('tab:drag:end'),
+  bookmarkToggleHidden: (hidden) => ipcRenderer.send('bookmark:toggleHidden', hidden),
+  bookmarkSetStyle: (s) => ipcRenderer.send('bookmark:setStyle', s),
+  channelToggle: (chId) => ipcRenderer.invoke('channel:toggle', chId),
+  setDrawerOpen: (open) => ipcRenderer.send('drawer:open', open),
+  contentHeight: (h) => ipcRenderer.send('content:height', h),
+})
