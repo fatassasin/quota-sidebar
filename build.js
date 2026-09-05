@@ -19,8 +19,12 @@ const IGNORE = [
   /^\/probe5\.js$/,
   /^\/preview/,
   /^\/build\.js$/,
-  /^\/shot\.png$/,
   /^\/run\.log$/,
+
+  // 给 README 和 release 页看的图，1.5M。程序自己不加载它，打进去只是死重量。
+  // 代价是 resources/app 里那份 README 的图链会断 —— 那个位置本来也没人翻。
+  /^\/shot\.png$/,
+  /^\/banner\.png$/,
 
   // 这两个启动脚本只在源码目录里成立 —— 它们要么找同级的 QuotaSidebar.exe，要么找
   // node_modules\electron，而 resources/app 里两样都没有。留在里面的唯一后果是有人

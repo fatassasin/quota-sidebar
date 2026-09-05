@@ -1,5 +1,7 @@
 # QuotaSidebar
 
+![QuotaSidebar — 一个面板，掌握所有 AI 额度](banner.png)
+
 贴在屏幕边缘的一枚书签，鼠标划过就展开，用来盯 AI 编程订阅的额度还剩多少。
 
 四个源在同一块面板里：**Claude**、**Codex**、**Cline**（支持多号，每个号一行）、**Opencode**。
