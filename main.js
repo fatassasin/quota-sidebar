@@ -174,6 +174,10 @@ const DEFAULTS = {
 
 let win, tabWin, tray, hideTimer, pollTimer, cursorTimer, schedTimer
 let expanded = false
+// 这次展开是从托盘点出来的。托盘是书签消失之后唯一的入口，所以由它打开的面板
+// 得比平时结实：不受前台规则约束、鼠标不在面板里也不自动收、设置里改东西也踢不掉。
+// 面板一收起就清零，下一次正常展开照旧走原来那套规则。
+let trayPinned = false
 let drawerOpen = false
 let config
 let dragState = null
@@ -223,7 +227,9 @@ function startCursorWatch() {
   clearInterval(cursorTimer)
   let outside = null
   cursorTimer = setInterval(() => {
-    if (!expanded || dragState || drawerOpen) { outside = null; return }
+    // trayPinned 跟 drawerOpen 同待遇：从托盘点开时鼠标正在托盘区、根本不在面板里，
+    // 不豁免的话面板会在 400ms 后自己关掉，看着就是「点了没反应」。
+    if (!expanded || dragState || drawerOpen || trayPinned) { outside = null; return }
     if (cursorInPanel()) {
       // 鼠标回到面板内：取消已经挂起的隐藏，避免“鼠标还在面板里却被藏掉”
       clearTimeout(hideTimer)
@@ -335,12 +341,15 @@ function panelBounds(open) {
   }
 }
 
-function setExpanded(open, force = false) {
+function setExpanded(open, force = false, fromTray = false) {
   if (!live(win) || (open && !panelStyleReady)) return
   if (!open && drawerOpen && !force) return
-  if (open && (!processActive || config.bookmark.hidden)) return
+  // 前台规则和「把书签整个藏起来」都只该管书签自己，不该连托盘这条路一起堵死 ——
+  // 书签一不见，设置就只能从托盘进，这儿再拦一道等于把人锁在门外。
+  if (open && !fromTray && (!processActive || config.bookmark.hidden)) return
   if (open === expanded) return
   expanded = open
+  trayPinned = open && fromTray
   clearTimeout(hideTimer)
   if (!open) frozenPanelH = null // 收起即解冻，下次展开重新按内容算
   const b = panelBounds(open)
@@ -630,7 +639,9 @@ function syncBookmark() {
   const bm = config.bookmark
   if (bm.hidden || !processActive) {
     if (live(tabWin)) tabWin.hide()
-    setExpanded(false, true)
+    // 书签该藏还是藏，但托盘点开的面板不能连坐 —— 设置里改任何一项都会走到这儿
+    // （config:set 里跟着调 syncBookmark），不豁免的话你刚从托盘打开、一动设置就被踢出去。
+    if (!trayPinned) setExpanded(false, true)
     return
   }
   if (live(tabWin) && tabStyleReady) {
@@ -1042,12 +1053,14 @@ app.whenReady().then(() => {
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'icon.png')))
   tray.setToolTip('额度侧板')
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '展开/收起', click: () => setExpanded(!expanded) },
+    // 第三个参数是「这是从托盘点的」。托盘是书签藏起来之后唯一还能进面板的地方，
+    // 所以它不受前台规则管 —— 否则前台规则一开、手边又没在跑 claude，这一项就是死的。
+    { label: '展开/收起', click: () => setExpanded(!expanded, false, true) },
     { label: '立即刷新', click: () => runAsync(() => poll(true), 'poll') },
     { type: 'separator' },
     { label: '退出', click: quitApp },
   ]))
-  tray.on('click', () => setExpanded(!expanded))
+  tray.on('click', () => setExpanded(!expanded, false, true))
 }).catch(fatal)
 
 app.on('before-quit', () => {
