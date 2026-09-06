@@ -44,15 +44,17 @@ Claude 和 Codex 不行 —— 它们的渠道指向本机代理，New API 里�
 `QuotaSidebar-win32-x64.zip`，解压到任意目录，双击里面的 `QuotaSidebar.exe`。
 不需要装 Node.js。
 
-想让它开机自启、或者在开始菜单里有个图标 —— 在**解压出来的那个目录里**打开
+**开机自启默认就是开的**，不用做任何事；不想要就进设置关掉「开机自启」。
+
+想在开始菜单里有个图标 —— 在**解压出来的那个目录里**打开
 PowerShell（在地址栏敲 `powershell` 回车即可），执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File create-shortcut.ps1 -Startup
+powershell -NoProfile -ExecutionPolicy Bypass -File create-shortcut.ps1
 ```
 
-去掉 `-Startup` 就只建开始菜单快捷方式，不自启。这个脚本从源码目录里跑也可以，
-它会自己认出是哪种装法。
+这个脚本从源码目录里跑也可以，它会自己认出是哪种装法。源码版没有内置自启
+（原因见下），要开机启动就给它加 `-Startup`，脚本会往「启动」文件夹里也放一份。
 
 ### 方式二：从源码运行
 
@@ -111,6 +113,9 @@ npm run check
 
 ## 其它功能
 
+- **开机自启**：默认开，设置里可关。只有下载的打包版有这个 —— 源码版启动的是
+  `node_modules` 里的 electron，把它连同项目路径写进注册表，日后挪一次目录这条启动项
+  就悄悄失效了，所以那种装法请用 `create-shortcut.ps1 -Startup`
 - **书签**：可拖到任意屏幕的任意一条边，大小、高度、圆角都能调，也能整个藏起来
 - **渠道开关**：面板里直接启用/禁用 New API 的渠道，满额的会自动禁用
 - **定时热身**：到点发一条消息把 5 小时窗口提前点着；额度已经在动就跳过

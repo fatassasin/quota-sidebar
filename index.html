@@ -404,6 +404,10 @@
         <label>同步间隔（秒）</label>
         <input type="number" id="interval" min="10" max="3600" />
       </div>
+      <div class="toggle-row" title="登记进 Windows 的开机启动项。只对下载的打包版生效 —— 源码版启动的是 node_modules 里的 electron，把它写进注册表，日后挪一次目录这条启动项就悄悄失效了，那种装法请用 create-shortcut.ps1 -Startup。在任务管理器「启动」页关掉的，这里不会偷偷替你打开。">
+        <span>开机自启</span>
+        <div class="toggle" id="autoLaunch"></div>
+      </div>
       <div class="toggle-row">
         <span>隐藏邮箱地址</span>
         <div class="toggle" id="hideEmail"></div>
@@ -513,7 +517,7 @@
   const color = (p) => (p >= 90 ? 'var(--bad)' : p >= 70 ? 'var(--warn)' : 'var(--ok)')
 
   let last = null
-  let config = { intervalSec: 60, hideEmail: true, visible: {}, names: {}, bookmark: {}, autoShowAfterReset: true, hiddenUntil: {}, onlyWhenRunning: false, processes: [], schedules: [], sources: {} }
+  let config = { intervalSec: 30, hideEmail: false, visible: {}, names: {}, bookmark: {}, autoShowAfterReset: true, autoLaunch: true, hiddenUntil: {}, onlyWhenRunning: false, processes: [], schedules: [], sources: {} }
   let displays = []
   let runningProcs = []
   let drawerReady = false
@@ -550,6 +554,9 @@
       if (window.api?.setDrawerOpen) api.setDrawerOpen(false)
       render() // 关掉设置立刻重测卡片高度，自适应才有新数据可用
     }
+    // 默认开，同 newapiPriority：取反得拿 === false 当基准，
+    // 否则键还没下发时第一次点会把 undefined 翻成 true，看着像没反应。
+    $('#autoLaunch').onclick = () => saveConfig({ autoLaunch: config.autoLaunch === false })
     $('#hideEmail').onclick = () => saveConfig({ hideEmail: !config.hideEmail })
     $('#autoShowAfterReset').onclick = () => saveConfig({ autoShowAfterReset: !config.autoShowAfterReset })
     // 默认开，所以取反要拿 !== false 当基准，不然第一次点会把 undefined 翻成 true（等于没反应）。
@@ -560,15 +567,15 @@
       if (window.api?.bookmarkToggleHidden) api.bookmarkToggleHidden(hidden)
     }
     $('#interval').addEventListener('change', () => {
-      saveConfig({ intervalSec: Math.max(10, parseInt($('#interval').value, 10) || 60) })
+      saveConfig({ intervalSec: Math.max(10, parseInt($('#interval').value, 10) || 30) })
     })
     $('#tabSize').addEventListener('change', () => {
-      const size = Math.max(1, parseInt($('#tabSize').value, 10) || 72)
+      const size = Math.max(1, parseInt($('#tabSize').value, 10) || 15)
       saveConfig({ bookmark: { ...config.bookmark, size } })
       if (window.api?.bookmarkSetStyle) api.bookmarkSetStyle({ size })
     })
     $('#tabSizeH').addEventListener('change', () => {
-      const h = Math.max(1, parseInt($('#tabSizeH').value, 10) || 72)
+      const h = Math.max(1, parseInt($('#tabSizeH').value, 10) || 60)
       saveConfig({ bookmark: { ...config.bookmark, height: h } })
       if (window.api?.bookmarkSetStyle) api.bookmarkSetStyle({ height: h })
     })
@@ -1008,12 +1015,15 @@
 
   function syncUI() {
     $('#interval').value = config.intervalSec
+    // 默认开的用 !== false，默认关的用 !!（见下面 onlyWhenRunning 那条注释）——
+    // 写反了键缺失时开关的显示会跟实际行为正好相反。
+    setToggle('#autoLaunch', config.autoLaunch !== false)
     setToggle('#hideEmail', config.hideEmail)
     setToggle('#autoShowAfterReset', config.autoShowAfterReset !== false)
     setToggle('#newapiPriority', config.newapiPriority !== false)
     setToggle('#hideBookmark', !!config.bookmark?.hidden)
-    $('#tabSize').value = config.bookmark?.size ?? 72
-    $('#tabSizeH').value = config.bookmark?.height ?? config.bookmark?.size ?? 72
+    $('#tabSize').value = config.bookmark?.size ?? 15
+    $('#tabSizeH').value = config.bookmark?.height ?? config.bookmark?.size ?? 60
     $('#tabRounded').value = config.bookmark?.rounded ?? 8
     $('#panelHeight').value = config.panelHeight ?? 560
     setToggle('#panelAuto', !!config.panelAuto)

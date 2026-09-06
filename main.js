@@ -145,18 +145,24 @@ if (!app.requestSingleInstanceLock()) {
 
 const PANEL_W = 360
 const EDGE_W = 6
-const TAB_W = 44
-const TAB_H = 72
+// 兜底尺寸：只有 config 里 size/height 是 0 或 null 时才轮到它们。
+// 跟 DEFAULTS.bookmark 保持一致，否则同一个「默认大小」在代码里有两个值。
+const TAB_W = 15
+const TAB_H = 60
 const DEFAULTS = {
-  intervalSec: 60,
-  hideEmail: true,
+  intervalSec: 30,
+  hideEmail: false,
   visible: { claude: true, codex: true, cline: true, opencode: true },
   names: { claude: 'Claude', codex: 'Codex', opencode: 'Opencode' },
-  bookmark: { edge: 'right', offset: 0.5, hidden: false, displayId: null, size: 72, height: 72, rounded: 8 },
+  bookmark: { edge: 'right', offset: 0.5, hidden: false, displayId: null, size: 15, height: 60, rounded: 8 },
   panelHeight: 560,
   panelAuto: true,
   panelAutoHeight: null,
   autoShowAfterReset: true,
+  // 开机自启，默认开。这东西的价值全在「一直都在那儿」——
+  // 装完还得自己再去设一次，等于大半时间它根本没在盯额度。
+  // 只对打包版生效，原因见 applyAutoLaunch。
+  autoLaunch: true,
   // 默认关。开着的话新装的人打开程序、没同时开 claude/codex，就什么都看不见 ——
   // 分不清是没装好还是没配好，第一次用就先卡在这儿。想要这个行为的人自己去
   // 设置里打开（「仅在这些程序处于前台时显示」），下面那张进程名单已经填好备着了。
@@ -738,6 +744,30 @@ function startProcWatch() {
   runAsync(checkProcesses, 'process-watch')
 }
 
+// 开机自启。把当前 exe 登记进注册表的 Run 键，由 Electron 代劳。
+//
+// 只在打包版做。源码版跑的是 node_modules 里的 electron.exe，把它连同项目路径写进
+// 注册表，日后一挪目录就变成一条指向空处的启动项 —— 而且不会报错，只是某天起
+// 开机后它就不在了，没人查得出为什么。源码版要自启请用 create-shortcut.ps1 -Startup。
+//
+// 比对只看 openAtLogin（注册表里那条在不在），不看 executableWillLaunchAtLogin。
+// 差别在于：任务管理器「启动」页禁用一项时，不删注册表，只另外记一个禁用标记 ——
+// 于是 openAtLogin 仍是 true，我们这儿就不会去重写它。用户在任务管理器里关掉的，
+// 我们不偷偷再打开；只有设置里那个开关才是我们该管的。
+function applyAutoLaunch() {
+  if (process.platform !== 'win32' || !app.isPackaged) return
+  const want = config.autoLaunch !== false
+  try {
+    if (app.getLoginItemSettings({ path: process.execPath }).openAtLogin === want) return
+    app.setLoginItemSettings({ openAtLogin: want, path: process.execPath, args: ['--no-sandbox'] })
+    logEvent('自启', want ? '已登记开机启动' : '已取消开机启动')
+  } catch (e) {
+    // 失败不该拦住启动：注册表被组策略锁死的机器上写不进去很正常，
+    // 但除此之外程序完全能用，没必要为这个不让人开门。
+    logEvent('自启:失败', String((e && e.message) || e))
+  }
+}
+
 function applyToolWindow(w, label) {
   return new Promise((resolve) => {
     if (process.platform !== 'win32' || !live(w)) return resolve(false)
@@ -972,6 +1002,7 @@ function createWindows() {
       runAsync(() => poll(true), 'poll:配置渠道改动')
     }
     if (config.intervalSec !== previousIntervalSec) startPoll()
+    applyAutoLaunch()
     runAsync(checkProcesses, 'process-watch')
     syncBookmark()
     if (expanded && live(win)) win.setBounds(panelBounds(true), true)
@@ -1031,6 +1062,7 @@ app.whenReady().then(() => {
   logEvent('start', `pid=${process.pid} electron=${process.versions.electron} node=${process.versions.node} ` +
     `chrome=${process.versions.chrome} userData=${logPath ? path.dirname(logPath) : '取不到'}`)
   config = loadConfig()
+  applyAutoLaunch()
   // 数据源位置来自配置，不再写死。没填过的话这里灌的是三个空串，四张卡片会各自报
   // 「还没配置…」，正是要让人看到的提示。
   configure(config.sources)
