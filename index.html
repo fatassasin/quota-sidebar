@@ -33,15 +33,19 @@
   }
   body.open #panel { opacity: 1; transform: none; }
 
+  /* 这里千万别再加 -webkit-app-region: drag。面板窗口是 movable:false（main.js 建窗口那儿），
+     拖拽区一寸功能都不提供，却会让这块变成死区：Windows 上拖拽区靠原生 WM_NCHITTEST 返回
+     HTCAPTION 实现，命中的鼠标事件根本不进渲染进程，:hover 不触发、click 也收不到。
+     右上三个按钮原本靠 no-drag 在里面抠洞，但那张洞的地图是布局算完再推给浏览器进程的 ——
+     面板开着时每轮 render 都会回传内容高度触发一次 setBounds（见 content:height），
+     resize 到下次布局同步之间地图是旧的，洞就没了，于是「鼠标浮上去但点不动、图标也不变」。 */
   header {
     display: flex; align-items: center; gap: 6px;
     padding: 14px 16px 11px; border-bottom: 1px solid var(--line);
-    -webkit-app-region: drag;
   }
   header h1 { font-size: 13px; font-weight: 600; letter-spacing: .3px; }
-  header .t { margin-left: auto; color: var(--dim); font-size: 11px; -webkit-app-region: no-drag; }
+  header .t { margin-left: auto; color: var(--dim); font-size: 11px; }
   header button {
-    -webkit-app-region: no-drag;
     background: none; border: 0; color: var(--dim); cursor: pointer;
     font-size: 13px; padding: 2px 4px; border-radius: 4px;
   }
@@ -73,14 +77,20 @@
     flex: none; font-size: 10px; padding: 1px 6px; border-radius: 20px;
     background: rgba(255, 255, 255, .08); color: var(--dim); letter-spacing: .3px;
   }
-  /* NewAPI 优先级名次。第一名才会真的收到流量（选路是赢者通吃），所以只有它高亮。 */
+  /* NewAPI 优先级名次。第一名才会真的收到流量（选路是赢者通吃），所以只有它高亮。
+     点一下把这个号锁成第一名，再点解锁 —— 锁定态用一圈描边表示，15px 的圆点塞不下锁图标。 */
   .rank {
     flex: none; width: 15px; height: 15px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums;
     background: rgba(255, 255, 255, .08); color: var(--dim);
+    cursor: pointer; user-select: none;
   }
   .rank.top { background: rgba(62, 207, 142, .18); color: var(--ok); }
+  /* 用 brightness 而不是换配色：这样第一名（绿）和其余（灰）两种底色都有反馈，
+     也不会跟 .top 的背景打架。 */
+  .rank:hover { filter: brightness(1.6); }
+  .rank.pinned { box-shadow: 0 0 0 1.5px var(--ok); }
   .extra { margin-left: auto; flex: none; font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
   .icons { display: flex; align-items: center; gap: 4px; margin-left: auto; flex: none; }
   .icon-btn {
@@ -412,7 +422,7 @@
         <span>隐藏邮箱地址</span>
         <div class="toggle" id="hideEmail"></div>
       </div>
-      <div class="toggle-row">
+      <div class="toggle-row" title="只管卡片上用眼睛临时隐藏的号 —— 它们等到额度重置就自己回来。在下面「面板显示」里关掉的是永久的，不受这一项影响。">
         <span>额度重置后自动显示</span>
         <div class="toggle" id="autoShowAfterReset"></div>
       </div>
@@ -420,7 +430,7 @@
         <span>隐藏书签块</span>
         <div class="toggle" id="hideBookmark"></div>
       </div>
-      <div class="toggle-row" title="按配速给 NewAPI 渠道排优先级：周额度按 100%/7 天匀速算出此刻「本该」用到多少，谁落后这条基准线最多就先用谁 —— 落后的号有富余，超速的号该缓一缓，这样三个号才能一直都活着，而不是集中喂死一个。配速每 10 个点分一档（正好等于一个 5 小时窗口的量），同档之间按周额度的重置先后排，所以领先的号至少服务满一个 5 小时窗口才交班，不会来回抖。5 小时窗口本身只用来判断现在还供不供得动，不参与排序。">
+      <div class="toggle-row" title="按配速给 NewAPI 渠道排优先级：周额度按 100%/7 天匀速算出此刻「本该」用到多少，谁落后这条基准线最多就先用谁 —— 落后的号有富余，超速的号该缓一缓，这样三个号才能一直都活着，而不是集中喂死一个。配速每 10 个点分一档（正好等于一个 5 小时窗口的量），同档之间按周额度的重置先后排，所以领先的号至少服务满一个 5 小时窗口才交班，不会来回抖。5 小时窗口本身只用来判断现在还供不供得动，不参与排序。跟卡片上那个名次徽章的「手动锁定第一名」是两件事：这个开关管写不写回 New API，锁管怎么排；关掉这个开关，锁仍然改面板顺序，但两者都不落库。">
         <span>自动排 NewAPI 渠道优先级</span>
         <div class="toggle" id="newapiPriority"></div>
       </div>
@@ -476,7 +486,7 @@
     </section>
 
     <section class="settings-card">
-      <div class="section-title">面板显示 &amp; 自定义名称</div>
+      <div class="section-title" title="在这里关掉的号永久不显示，不会因为额度重置又冒出来；卡片上的眼睛才是临时隐藏。">面板显示 &amp; 自定义名称</div>
       <div class="group" id="panels"></div>
     </section>
 
@@ -517,7 +527,7 @@
   const color = (p) => (p >= 90 ? 'var(--bad)' : p >= 70 ? 'var(--warn)' : 'var(--ok)')
 
   let last = null
-  let config = { intervalSec: 30, hideEmail: false, visible: {}, names: {}, bookmark: {}, autoShowAfterReset: true, autoLaunch: true, hiddenUntil: {}, onlyWhenRunning: false, processes: [], schedules: [], sources: {} }
+  let config = { intervalSec: 30, hideEmail: false, visible: {}, names: {}, bookmark: {}, autoShowAfterReset: true, autoLaunch: true, hiddenUntil: {}, onlyWhenRunning: false, pinnedRank: null, processes: [], schedules: [], sources: {} }
   let displays = []
   let runningProcs = []
   let drawerReady = false
@@ -1069,7 +1079,9 @@
       const inp = row?.querySelector('.account-name')
       if (toggle) {
         toggle.classList.toggle('on', config.visible[a.id] !== false)
-        toggle.onclick = () => setAccountVisible(a, config.visible[a.id] === false)
+        // 第三个参数 = 永久。设置里关掉的号不该因为额度重置又自己冒出来 ——
+        // 在这儿关是「我不看这个号了」，跟卡片上点眼睛的「这次先收起来」不是一回事。
+        toggle.onclick = () => setAccountVisible(a, config.visible[a.id] === false, true)
       }
       if (inp) {
         inp.value = config.names[a.id] || ''
@@ -1234,9 +1246,15 @@
     }
   }
 
-  function setAccountVisible(a, visible) {
+  // 两个入口，两种「关」：
+  //   面板卡片上的眼睛（permanent=false）—— 临时的，记一个到期时间，等这个号额度重置了自己回来。
+  //   设置抽屉里的显示开关（permanent=true）—— 永久的，不记到期时间，再也不自己回来。
+  // 差别全在写不写 hiddenUntil：restoreResetAccounts 只认这一个键，没记就没人会去救它。
+  function setAccountVisible(a, visible, permanent = false) {
     const hiddenUntil = { ...config.hiddenUntil }
-    if (visible) {
+    if (visible || permanent) {
+      // 永久关也要删旧的 deadline：不然「先点眼睛关、再来设置里关」这条路，
+      // 眼睛留下的那个到期时间还躺在 config 里，到点照样把它翻回来。
       delete hiddenUntil[a.id]
     } else {
       const resets = a.windows.map((w) => new Date(w.resetsAt).getTime()).filter((t) => isFinite(t) && t > Date.now())
@@ -1286,12 +1304,12 @@
     // 有 NewAPI 渠道 id 的卡片：加眼睛(隐藏)+开关(禁用)图标，直接同步渠道管理
     const icons = a.$channelId != null ? `
       <div class="icons">
-        <button class="icon-btn" title="隐藏" data-eye="${esc(a.id)}">👁</button>
+        <button class="icon-btn" title="隐藏到下次额度重置（想永久不看，去设置的「面板显示」里关）" data-eye="${esc(a.id)}">👁</button>
         <button class="icon-btn${a.disabled ? ' on' : ''}" title="禁用/启用渠道" data-tog="${a.$channelId}">◉</button>
       </div>` : ''
     return `<div class="card${a.disabled ? ' off' : ''}">
       <div class="head">
-        ${a.$rank ? `<span class="rank${a.$rank === 1 ? ' top' : ''}" title="${esc(`NewAPI 优先级第 ${a.$rank} 名 · ${a.$rankWhy || ''}`)}">${a.$rank}</span>` : ''}
+        ${a.$rank ? `<span class="rank${a.$rank === 1 ? ' top' : ''}${config.pinnedRank === a.id ? ' pinned' : ''}" data-rank="${esc(a.id)}" title="${esc(`NewAPI 优先级第 ${a.$rank} 名 · ${a.$rankWhy || ''}\n${config.pinnedRank === a.id ? '点击解锁，交回自动排序' : '点击锁定为第 1 名（同时只能锁一个）'}`)}">${a.$rank}</span>` : ''}
         <span class="name">${esc(displayName(a))}</span>
         ${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
         ${a.extra ? `<span class="extra">${esc(a.extra)}</span>` : ''}
@@ -1322,6 +1340,14 @@
     $('#t').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} 更新`
 
     // 卡片级图标：眼睛切换面板隐藏，开关翻转 NewAPI 渠道禁用状态
+    // 名次徽章：点一下把这个号锁成第 1 名，再点同一个解锁。点另一个号，旧的自动解开 ——
+    // 同时只能锁一个，不然三个都锁上就等于把自动排序整个关掉了，还看不出来是自己关的。
+    $('#list').querySelectorAll('[data-rank]').forEach((b) => {
+      b.onclick = () => {
+        const id = b.dataset.rank
+        saveConfig({ pinnedRank: config.pinnedRank === id ? null : id })
+      }
+    })
     $('#list').querySelectorAll('[data-eye]').forEach((b) => {
       b.onclick = () => {
         const id = b.dataset.eye

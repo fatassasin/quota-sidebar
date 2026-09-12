@@ -171,6 +171,10 @@ const DEFAULTS = {
   hiddenUntil: {},
   claudeUsageSnapshots: {},
   newapiPriority: true,
+  // 手动锁定为第 1 名的账号 id，null = 不锁、全交给配速自动排。
+  // 在面板里点卡片上那个 1/2/3 徽章设置，同时只能锁一个。
+  // 它只压排序，不压「满额自动禁用」—— 锁定的号烧穿了照样被禁用，重置后自己回到第一。
+  pinnedRank: null,
   schedules: [],
   // 三个数据源的数据库位置，用户在设置抽屉最底部的「配置渠道」里填。默认必须全空 ——
   // 这份默认值会随程序发出去，写死任何人的实际路径都是错的。
@@ -373,6 +377,19 @@ let pollOk = 0
 let pollOkAt = 0
 let pollErr = '' // 上一次的错误原文，用来判断该不该再记一条
 
+// 最近一份成功的数据。留着它是为了「手动锁定第一名」能立刻见效：名次只跟已有的数字有关，
+// 换个第一名没有任何理由再去问一遍上游 usage 接口（那个会吃 429，连点几下就更糟）。
+let lastPayload = null
+
+// 排名 + 渠道开关落库。抽出来是因为它有两个调用方：正常轮询，和面板里点锁之后的就地重排。
+function applyRanking(accounts) {
+  const touched = syncNewApi(accounts, {
+    priority: config.newapiPriority !== false,
+    pinned: config.pinnedRank || null,
+  })
+  if (touched.length) logEvent('newapi', JSON.stringify(touched))
+}
+
 async function pollOnce(force = false) {
   pollCount++
   try {
@@ -388,12 +405,12 @@ async function pollOnce(force = false) {
     }
     // 限额满了自动禁用渠道、重置后自动启用，并按周额度的配速（落后匀速进度的先用）给渠道排优先级。
     // 两张表一起写，漏一张就会留下「后台显示启用、实际收不到流量」的哑渠道。
-    const touched = syncNewApi(accounts, { priority: config.newapiPriority !== false })
-    if (touched.length) logEvent('newapi', JSON.stringify(touched))
+    applyRanking(accounts)
     pollOk++
     pollOkAt = Date.now()
     if (pollErr) { logEvent('poll:恢复', `之前一直卡在「${pollErr}」`); pollErr = '' }
     const payload = { at: Date.now(), accounts }
+    lastPayload = payload
     send(win, 'data', payload)
     return payload
   } catch (e) {
@@ -981,6 +998,7 @@ function createWindows() {
   ipcMain.handle('config:get', () => config)
   ipcMain.handle('config:set', (_e, cfg) => {
     const previousIntervalSec = config.intervalSec
+    const previousPinned = config.pinnedRank || null
     // 渲染进程每次改设置都把整份 config 发回来，所以不能拿「带没带 sources」当判据 ——
     // 那样点一下任何开关都会触发一次强刷。比内容。
     const previousSources = JSON.stringify(config.sources || {})
@@ -1002,6 +1020,16 @@ function createWindows() {
       runAsync(() => poll(true), 'poll:配置渠道改动')
     }
     if (config.intervalSec !== previousIntervalSec) startPoll()
+    // 锁定的号变了：拿最近一份数据就地重排、重写渠道优先级，不去问上游。
+    // 还没跑出过任何一轮数据（刚起来就点）才退回去走一次正常轮询。
+    if ((config.pinnedRank || null) !== previousPinned) {
+      if (lastPayload) {
+        applyRanking(lastPayload.accounts)
+        send(win, 'data', lastPayload)
+      } else {
+        runAsync(() => poll(false), 'poll:锁定名次改动')
+      }
+    }
     applyAutoLaunch()
     runAsync(checkProcesses, 'process-watch')
     syncBookmark()

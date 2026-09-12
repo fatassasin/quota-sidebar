@@ -26,8 +26,8 @@ const acc = (name, w5, wk) => ({
 const COLD = [0, null] // 窗口没在计时，面板上显示 0%
 
 let bad = 0
-function check(title, accounts, expect) {
-  const r = claudeRank(accounts)
+function check(title, accounts, expect, pinned = null) {
+  const r = claudeRank(accounts, pinned)
   const got = r.map((x) => x.a.name)
   const ok = JSON.stringify(got) === JSON.stringify(expect)
   if (!ok) bad++
@@ -114,6 +114,34 @@ check('同档同重置时，余额多的先用', [
   acc('余额少', [30, at(150)], [79, at(day(2))]),  // 基准线 71.4%，超前 +7.6 → 档 0
   acc('余额多', [30, at(150)], [75, at(day(2))]),  // 基准线 71.4%，超前 +3.6 → 档 0
 ], ['余额多', '余额少'])
+
+// 10. 手动锁定：压在所有自动规则之上，包括「烧满垫底」这条最硬的。
+//     排序层不给它开后门以外的任何照顾 —— 真正的保护在 syncNewApi 那边：
+//     满额禁用走的是另一套 want，锁定的号烧穿了照样被禁用，排第一也收不到流量。
+{
+  const three = () => [
+    acc('超速最多', [60, at(hour(3))], [88, at(hour(77.8))]),
+    acc('落后最多', COLD, [11, at(hour(131.8))]),
+    acc('居中', COLD, [32, at(hour(101.8))]),
+  ]
+  check('不锁时按配速排', three(), ['落后最多', '居中', '超速最多'])
+  check('锁定超速最多的，它压过配速排第一', three(),
+    ['超速最多', '落后最多', '居中'], 'claude:超速最多')
+  check('锁定居中的，其余两个仍按配速排', three(),
+    ['居中', '落后最多', '超速最多'], 'claude:居中')
+}
+
+check('锁定的号烧满了照样排第一（禁用是另一套逻辑，不归排序管）', [
+  acc('锁定但烧满', [100, at(60)], [10, at(hour(3))]),
+  acc('正常', [50, at(100)], [50, at(day(6))]),
+], ['锁定但烧满', '正常'], 'claude:锁定但烧满')
+
+// 11. 锁定的号这一轮不在名单里（删了 / 报错 / 没渠道 id）：这一级全 1，等于没锁，
+//     其余号照常自动排。config 里的锁不清，它回来还算数 —— 那是主进程的事。
+check('锁定的号不在名单里时等于没锁', [
+  acc('余额少', [30, at(150)], [79, at(day(2))]),
+  acc('余额多', [30, at(150)], [75, at(day(2))]),
+], ['余额多', '余额少'], 'claude:早就删了的号')
 
 console.log(bad ? `\n${bad} 项失败` : '\n全部通过')
 process.exit(bad ? 1 : 0)
