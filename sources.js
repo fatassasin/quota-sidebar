@@ -113,8 +113,14 @@ const cmp = (a, b) => (a === b ? 0 : a < b ? -1 : 1)
 //
 // 5 小时窗口仍然只当限速器，不参与排序：五个小时不碰某个号，它的周计数器纹丝不动，
 // 什么都没少。它只用来判「现在还供不供得动」，也就是档位。
-function claudeRank(accounts) {
+// pinned = 手动锁定为第一名的账号 id（config.pinnedRank）。它是排在 tier 之前的一级，
+// 也就是说连「额度烧满」都压不住它 —— 这正是「无视自动排序」的意思。安全性由另一头兜着：
+// 满额禁用走 syncNewApi 里的 want，跟名次是两套逻辑，锁定的号烧满了照样被禁用，
+// 排第一也收不到流量；等窗口一重置它自己就回到第一。
+// 锁定的号这一轮不在 accounts 里（删了/报错/没渠道 id）时，这一级自然全 1，等于没锁。
+function claudeRank(accounts, pinned = null) {
   const now = Date.now()
+  const pin = (r) => (pinned && r.a.id === pinned ? 0 : 1)
   const burnt = (w) => w && w.percent >= FULL &&
     (!w.resetsAt || new Date(w.resetsAt).getTime() > now)
   return accounts.filter((a) => isClaude(a) && a.$channelId != null && !a.error).map((a) => {
@@ -137,20 +143,23 @@ function claudeRank(accounts) {
     const band = lead === Infinity ? Infinity : Math.floor(lead / BAND)
     const pace = lead === Infinity ? '没有周额度数据'
       : `${lead >= 0 ? '超前' : '落后'}进度 ${pct(Math.abs(lead))} 点（该用 ${pct(budget)}%，实用 ${wk.percent}%）`
-    const why = tier === 2 ? `${burnt(w5) ? '5 小时' : '周'}额度已烧满，等重置`
+    const auto = tier === 2 ? `${burnt(w5) ? '5 小时' : '周'}额度已烧满，等重置`
       : tier === 1 ? `5 小时只剩 ${pct(room5)}% 余量，这一轮供不了多少`
         : pace + (due === Infinity ? '' : ` · 周额度 ${human(due)}后重置，还剩 ${pct(room)}% 没花`) +
           ` · 5小时余 ${pct(room5)}%${live5 ? '' : '（冷号，满血）'}`
+    // 锁定的号仍然把自动理由算完并留在后面：名次是手动定的，但「它现在什么状况」还是要看得见 ——
+    // 尤其是烧满的时候，得让人明白为什么排第一却不出流量。
+    const why = a.id === pinned ? `已手动锁定为第 1 名（无视自动排序） · ${auto}` : auto
     return { a, tier, why, due, room, room5, lead, band }
-    // 档位优先（供不动的排后面），再按配速档从落后到超前，同档按重置时间从近到远，
-    // 同样近的先给余额多的 —— 它待浪费的更多。band/due 都可能是 Infinity，
-    // 相减会得 NaN、让比较函数失去传递性，所以这两级必须用三路比较而不是减法。
-  }).sort((x, y) => x.tier - y.tier || cmp(x.band, y.band) || cmp(x.due, y.due) || y.room - x.room)
+    // 手动锁定的排最前（见函数头注释），其余：档位优先（供不动的排后面），再按配速档从落后到
+    // 超前，同档按重置时间从近到远，同样近的先给余额多的 —— 它待浪费的更多。band/due 都可能
+    // 是 Infinity，相减会得 NaN、让比较函数失去传递性，所以这两级必须用三路比较而不是减法。
+  }).sort((x, y) => pin(x) - pin(y) || x.tier - y.tier || cmp(x.band, y.band) || cmp(x.due, y.due) || y.room - x.room)
 }
 
 // 满额自动禁用、重置后自动启用，外加按配速给渠道排优先级。
 // 会就地给 account 挂上 $rank/$rankWhy，面板靠它显示名次。
-function syncNewApi(accounts, { priority = true } = {}) {
+function syncNewApi(accounts, { priority = true, pinned = null } = {}) {
   const managed = accounts.filter((a) => a.$channelId != null && !a.error)
   if (!managed.length) return []
 
@@ -162,7 +171,7 @@ function syncNewApi(accounts, { priority = true } = {}) {
     want.set(a.$channelId, blocking.length ? 2 : 1)
   }
 
-  const ranked = claudeRank(accounts)
+  const ranked = claudeRank(accounts, pinned)
   ranked.forEach((r, i) => { r.a.$rank = i + 1; r.a.$rankWhy = r.why })
   // 三个号同时烧穿时别把最后一个也关掉：留一个开着让请求撞 429，也好过 New API 报
   // “没有可用渠道” —— 后者看着像配置坏了，而且窗口一重置这个号就能自己恢复。
